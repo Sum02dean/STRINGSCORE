@@ -424,7 +424,7 @@ def inject_noise(x, mu=0.0, sigma=0.5):
     return np.abs(x + noise)
 
 
-def save_outputs_benchmark(x, probas, sid='511145', direc='benchmark/cog_predictions', model_name='.single'):
+def save_outputs_benchmark(x, probas, sid='511145', direc='benchmark/cog_predictions', model_name='.single', hold_out=False):
     """Reformats model outputs for compatibility with Damians benchmark script - saves to disk.
 
     :param x: x-data to predict on
@@ -440,6 +440,10 @@ def save_outputs_benchmark(x, probas, sid='511145', direc='benchmark/cog_predict
     :return: DataFrame with columns useful for benchmark script
     :rtype: pandas DataFrame
     """
+
+    if hold_out:
+        pass
+
     p1 = [xi.split('and')[0] for xi in list(x.index)]
     p2 = [xi.split('and')[-1] for xi in list(x.index)]
     proba_1 = [x[1] for x in probas]
@@ -451,7 +455,13 @@ def save_outputs_benchmark(x, probas, sid='511145', direc='benchmark/cog_predict
     return df
 
 
-def generate_quality_json(model_name, direct, sid='9606'):
+def generate_quality_json(model_name, direct, sid='9606', hold_out=False):
+    if hold_out:
+        model_name += '.hold_out'
+        benchmark_file = "{}/hold_out.{}.combined.v11.5.tsv".format(
+            direct, sid)
+    else:
+        benchmark_file = "data/{}.combined.v11.5.tsv".format(sid)
 
     json_report = {
         "run_title": "xgboost_v11.5.{}.{}".format(model_name, sid),
@@ -459,14 +469,14 @@ def generate_quality_json(model_name, direct, sid='9606'):
         "output_filename_data": "{}/{}.{}.scores.data.tsv".format(direct, model_name, sid),
         "output_filename_errors": "{}/{}.{}.scores.error.tsv".format(direct, model_name, sid),
         "valid_proteins_file": "data/valid_{}.tsv".format(sid),
-        "organisms_to_report": [sid],
+        "organisms_to_report": [int(sid)],
         "benchmarking_file": "data/kegg_benchmarking.CONN_maps_in.v11.tsv",
         "samples": [
             {
                 "name": "combined_v11.5",
                 "color": "red",
                 "line": "solid",
-                "data_file": "data/{}.combined.v11.5.tsv".format(sid)
+                "data_file": benchmark_file
             },
 
             {
@@ -483,6 +493,39 @@ def generate_quality_json(model_name, direct, sid='9606'):
     with open(file_name, 'w') as f:
         json.dump(json_report, f)
     return json_report
+
+
+def get_interesction(target, ref):
+    """Returns a new dataset where the obersations are those mutual to x1 and x2
+
+    :param x1: dataset 1
+    :type x1: pandas.core.DataFrame
+    :param x2: dataset 2
+    :type x2: pandas.core.DataFrame
+    """
+    # Add a new column which combines the string names to both dataframes
+    target = copy.deepcopy(target)
+    ref = copy.deepcopy(ref)
+    names_target = []
+    for row in target.values:
+        model, org, p1, p2, score = row
+        p_name = ".".join([p1, p2])
+        names_target.append(p_name)
+
+    names_ref = []
+    for row in ref.values:
+        model, org, p1, p2, score = row
+        p_name = ".".join([p1, p2])
+        names_ref.append(p_name)
+
+    cn = ['model', 'org', 'p1', 'p2', 'proba']
+    target.columns = cn
+    ref.columns = cn
+    target['names'] = np.array(names_target)
+    ref['names'] = np.array(names_ref)
+    intersect = ref[ref.names.isin(target.names)]
+    intersect.reset_index(inplace=True, drop=True)
+    return intersect
 
 
 def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
@@ -523,6 +566,7 @@ def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
     test_ratio = 1-train_ratio
 
     if cogs:
+        print('Generating COG splits')
         # split data on the cogs
         cog_map, _ = create_cog_map(spec_kegg=spec_kegg, species_id=species_id)
         pos_tr, pos_te, neg_tr, neg_te = split_on_cogs(x=data, y=labels, cog_map=cog_map,
@@ -552,6 +596,7 @@ def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
         x_test.drop(columns=['labels', 'cogs'], inplace=True)
+        print('Done')
 
     else:
         # Train-test splits
@@ -590,18 +635,22 @@ def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
 
     # Model init
     # increased weight applied to the positive class
+    print('Building and Fitting model')
     clf = build_model(params, class_ratio=weights)
 
     # Predict
     clf = fit(clf, x_train, y_train, x_test, y_test)
     clf, preds, probas, acc, _ = predict(clf, x_test, y_test)
+    print('Done')
 
     # Perform cross validation scoring
+    print('Generating CV results')
     dtrain = xgb.DMatrix(x_train, label=y_train)
     dtest = xgb.DMatrix(x_test, label=y_test)
     cv_results = xgb.cv(dtrain=dtrain, params=params, nfold=5,
                         metrics="auc", as_pandas=True, seed=123)
     print(cv_results)
+    print('Done')
 
     # plot ROC curve
     score = plot_roc(y_test=y_test, probas=probas, plot=False)
@@ -636,19 +685,19 @@ if USE_ARGPASE:
     parser.add_argument('-n', '--model_name', type=str, metavar='',
                         required=True, default='model_0', help='name of the model')
 
-    parser.add_argument('-c', '--cogs', type=bool, metavar='',
+    parser.add_argument('-c', '--cogs', type=str, metavar='',
                         required=True, default=True, help='to split on cogs or not')
 
     parser.add_argument('-cw', '--class_weight', type=float, metavar='',
                         required=True, default=4, help='factor applied to positive predictions')
 
-    parser.add_argument('-un', '--use_noise', type=bool, metavar='',
+    parser.add_argument('-un', '--use_noise', type=str, metavar='',
                         required=True, default=False, help='if True, injects noise to X')
 
     parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
                         required=True, default=4, help='factor increase in neg obs compared to pos obs')
 
-    parser.add_argument('-dh', '--drop_homology', type=bool, metavar='',
+    parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
                         required=True, default=True, help='if True, drops homology feature')
 
     parser.add_argument('-sid', '--species_id', type=str, metavar='',
@@ -663,14 +712,14 @@ if USE_ARGPASE:
     # Parse args
     args = parser.parse_args()
     model_name = args.model_name
-    use_cogs = args.cogs
+    use_cogs = True if args.cogs == 'True' else False
     weights = args.class_weight
-    use_noise = args.use_noise
+    use_noise = True if args.use_noise == 'True' else False
     neg_ratio = args.neg_ratio
-    drop_homology = args.drop_homology
+    drop_homology = True if args.drop_homology == 'True' else False
     species_id = args.species_id
     output_dir = os.path.join(args.output_dir, model_name)
-
+    print('Running script with the following args:', args)
 
 else:
     # Define defaults without using Argparse
@@ -731,15 +780,31 @@ if '511145' in species_id:
     ecoli_outs = save_outputs_benchmark(x=x_ecoli, probas=ecoli_probas,  sid='511145',
                                         direc=output_dir, model_name=model_name)
 
+    # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
+    benchmark_file = 'data/{}.combined.v11.5.tsv'.format('511145')
+    combined_benchmark = pd.read_csv(
+        benchmark_file, header=None, sep='\t')
+
     hold_out_ecoli_outs = save_outputs_benchmark(x=ecoli_output['X_HO'], probas=hold_out_ecoli_probas,
                                                  sid='511145', direc=output_dir,
                                                  model_name=model_name + '.hold_out')
+
+    # Filter benchmark set to contain only observations in hold-out
+    hold_out_filtered = get_interesction(
+        target=hold_out_ecoli_outs, ref=combined_benchmark)
+
+    # Resave the intersect file to the model directory
+    save_dir = os.path.join(
+        output_dir, 'hold_out.{}.combined.v11.5.tsv'.format('511145'))
+    hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
+    # This requires to change the quality json function if dataset is a hold_out set
+
     # Generate quality reports
     json_report = generate_quality_json(
         model_name=model_name, direct=output_dir, sid='511145')
 
     hold_out_json_report = generate_quality_json(
-        model_name=model_name + '.hold_out', direct=output_dir, sid='511145')
+        model_name=model_name, direct=output_dir, sid='511145', hold_out=True)
 
     # Call Damian benchark script here
     print('Running benchmark')
@@ -785,12 +850,27 @@ if '9606' in species_id:
     hold_out_human_outs = save_outputs_benchmark(x=human_output['X_HO'], probas=hold_out_human_probas,
                                                  sid='9606', direc=output_dir, model_name=model_name + '.hold_out')
 
+    # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
+    benchmark_file = 'data/{}.combined.v11.5.tsv'.format('9606')
+    combined_benchmark = pd.read_csv(
+        benchmark_file, header=None, sep='\t')
+
+    # Filter benchmark set to contain only observations in hold-out
+    hold_out_filtered = get_interesction(
+        target=hold_out_human_outs, ref=combined_benchmark)
+
+    # Resave the intersect file to the model directory
+    save_dir = os.path.join(
+        output_dir, 'hold_out.{}.combined.v11.5.tsv'.format('9606'))
+    hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
+    # This requires to change the quality json function if dataset is a hold_out set
+
     # Generate quality reports
     json_report = generate_quality_json(
         model_name=model_name, direct=output_dir, sid='9606')
 
     hold_out_json_report = generate_quality_json(
-        model_name=model_name + '.hold_out', direct=output_dir, sid='9606')
+        model_name=model_name, direct=output_dir, sid='9606', hold_out=True)
 
     print('Running benchmark')
     command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
@@ -828,19 +908,35 @@ if '4932' in species_id:
     hold_out_yeast_probas = clf.predict_proba(yeast_output['X_HO'])
     hold_out_yeast_preds = clf.predict(yeast_output['X_HO'])
 
-    # Save benchmarks
+    # Save predictions for benchmarking
     yeast_outs = save_outputs_benchmark(x=x_yeast, probas=yeast_probas,  sid='4932',
                                         direc=output_dir, model_name=model_name)
 
+    # Save held-out predictions for benchmarking
     hold_out_yeast_outs = save_outputs_benchmark(x=yeast_output['X_HO'], probas=hold_out_yeast_probas,
                                                  sid='4932', direc=output_dir, model_name=model_name + '.hold_out')
+
+    # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
+    benchmark_file = 'data/{}.combined.v11.5.tsv'.format('4932')
+    combined_benchmark = pd.read_csv(
+        benchmark_file, header=None, sep='\t')
+
+    # Filter benchmark set to contain only observations in hold-out
+    hold_out_filtered = get_interesction(
+        target=hold_out_yeast_outs, ref=combined_benchmark)
+
+    # Resave the intersect file to the model directory
+    save_dir = os.path.join(
+        output_dir, 'hold_out.{}.combined.v11.5.tsv'.format('4932'))
+    hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
+    # This requires to change the quality json function if dataset is a hold_out set
 
     # Generate quality reports
     json_report = generate_quality_json(
         model_name=model_name, direct=output_dir, sid='4932')
 
     hold_out_json_report = generate_quality_json(
-        model_name=model_name + '.hold_out', direct=output_dir, sid='4932')
+        model_name=model_name, direct=output_dir, sid='4932', hold_out=True)
 
     # Call benchark script here
     print('Running benchmark')
@@ -853,3 +949,5 @@ if '4932' in species_id:
         ["{}/quality_full_{}.hold_out.{}.json".format(
             output_dir, model_name, '4932')]
     out = subprocess.run(command)
+
+print('Script finished.')
