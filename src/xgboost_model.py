@@ -77,7 +77,7 @@ def create_cog_map(spec_kegg, species_id='9606.'):
 def generate_cog_labels(x, cog_map):
     """Appends COG labels as column to x
 
-    :param x: x-data
+    :param x: x-data - x.index must be protein names else run format()
     :type x: pandas DataFrame object
     :param cog_map: cog encoder
     :type cog_map: dict
@@ -107,7 +107,7 @@ def generate_cog_labels(x, cog_map):
     return x
 
 
-def sample_cogs(x, class_label=1, shuffle=True):
+def sample_cogs(x, class_label=1, shuffle=True, test_ratio=0.5):
     """Samples from x without replacement.
 
     :param x: x-data
@@ -119,19 +119,31 @@ def sample_cogs(x, class_label=1, shuffle=True):
     :return: a sample of the original x
     :rtype: pandas DataFrame object
     """
+    x = copy.deepcopy(x)
     # Shuffle and sort
     if shuffle:
         x = x.sample(frac=1)
 
-    x = x.sort_values('cogs', ascending=False)
-    # Drop duplicates
-    x = x.drop_duplicates(subset='cogs', keep='first')
-    # Append label
-    x['labels'] = [class_label] * np.shape(x)[0]
-    return x
+    # Collect and remove duplicates from train set
+    dup_idx = x.cogs.duplicated()
+    x_duplicates = x[dup_idx]
+    x_filtered = x.drop_duplicates(subset='cogs', keep='first')
+
+    # Sample test set from set of train observations
+    x_test = x_filtered.sample(frac=test_ratio)
+
+    # Recombine duplicates with filtered x after test split
+    x_train = pd.concat([x_filtered, x_duplicates])
+
+    # Drop any instanes where test cogs are present in train
+    x_train_new = x_train[~x_train.cogs.isin(x_test.cogs)].dropna()
+
+    # # Append label
+    x_train_new['labels'] = [class_label] * np.shape(x_train_new)[0]
+    return x_train_new, x_test
 
 
-def split_on_cogs(x, y, cog_map, neg_ratio=4, train_ratio=0.8):
+def split_on_cogs(x, y, cog_map, neg_ratio=4, test_ratio=0.2):
     """Split the data to guarentee no overlap in COG groups.
 
     :param x: data
@@ -150,25 +162,26 @@ def split_on_cogs(x, y, cog_map, neg_ratio=4, train_ratio=0.8):
     """
 
     # Split into positive and negative sets
-    x_pos = deepcopy(x[y.labels == 1])
-    x_neg = deepcopy(x[y.labels == 0])
+    x_pos = copy.deepcopy(x[y.labels == 1])
+    x_neg = copy.deepcopy(x[y.labels == 0])
 
     # Add COG labels to x dataframe
     x_pos = generate_cog_labels(x_pos, cog_map)
     x_neg = generate_cog_labels(x_neg, cog_map)
 
-    # Sample for positive train cogs
-    x_pos = sample_cogs(x_pos, class_label=1)
-    x_neg = sample_cogs(x_neg, class_label=0)
+    # Upscale based on neg-pos class ratios
+    k_pos = 1
+    k_neg = neg_ratio * k_pos
 
-    # Subset the positive data into train-test
-    k_train = int(train_ratio * np.shape(x_pos)[0])
-    pos_train = x_pos.iloc[:k_train, :]
-    pos_test = x_pos.iloc[k_train+1:, :]
+    # Sample from resective datasets
+    x_pos_sample = x_pos.sample(k_pos*np.shape(x_pos)[0])
+    x_neg_sample = x_neg.sample(k_neg*np.shape(x_pos)[0])
 
-    # Subset the negative data into train-test
-    neg_train = x_neg.iloc[:neg_ratio*k_train, :]
-    neg_test = x_neg.iloc[-k_train-1:, :]
+    # Generate train test splits
+    pos_train, pos_test = sample_cogs(
+        x_pos_sample, class_label=1, test_ratio=test_ratio)
+    neg_train, neg_test = sample_cogs(
+        x_neg_sample, class_label=0, test_ratio=test_ratio)
 
     return pos_train, pos_test, neg_train, neg_test
 
