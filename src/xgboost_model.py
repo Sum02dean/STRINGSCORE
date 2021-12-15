@@ -117,7 +117,7 @@ def sample_cogs(x, class_label=1, shuffle=True, test_ratio=0.5):
     :param shuffle: to shuffle, defaults to True
     :type shuffle: bool, optional
     :return: a sample of the original x
-    :rtype: pandas DataFrame object
+    :rtype: pandas DataFrame object.
     """
     x = copy.deepcopy(x)
     # Shuffle and sort
