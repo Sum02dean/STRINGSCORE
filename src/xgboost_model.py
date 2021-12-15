@@ -74,7 +74,7 @@ def create_cog_map(spec_kegg, species_id='9606.'):
     cog_vals = list(sample_cogs['cog_group'].values)
     cog_map = dict(zip(prot_id, cog_vals))
     rev_cog_map = dict(zip(cog_vals, prot_id))
-    return cog_map, rev_cog_map
+    return cog_map[0], rev_cog_map[0]
 
 
 def generate_cog_labels(x, cog_map):
@@ -528,6 +528,30 @@ def get_interesction(target, ref):
     return intersect
 
 
+def isolate_non_zero_feature(data, predictions, foi='experiments'):
+    """Sample data which only contains non-zero elements for a given feature of interest (foi)
+
+    :param data: organism data
+    :type data: pandas.core.DataFrame
+    :param predictions: predicted probability scores for positive class
+    :type predictions: iterable e.g. list
+    :param foi: feature of interest, only feature with non-zero elements, defaults to 'experiments'
+    :type foi: str, optional
+    :return: [description]
+    :rtype: [type]
+    """
+    # Make deepcopy of data
+    data_copy = copy.deepcopy(data)
+    # Filter dataset to exclude feature of interest (foi)
+    data_exc = data_copy.loc[:, (data_copy.columns != foi)]
+    # Extract indices were all row elements evaluate to zero
+    idxes = data_exc.loc[(data_exc == 0).all(axis=1)].index
+    # # Use these indices to extract all zero elements where foi is non-zero
+    data_copy['labels'] = predictions
+    foi_data = data_copy.loc[idxes, :]
+    return foi_data
+
+
 def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
                  cogs=True, species_id=None, train_ratio=0.8, noise=False, neg_ratio=1, plot=False):
     """Runs the entire piplie: COG splits --> data preprocessing --> model outputs.
@@ -706,6 +730,9 @@ if USE_ARGPASE:
     parser.add_argument('-o', '--output_dir', type=str, metavar='',
                         required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
+    parser.add_argument('-foi', '--use_foi', type=str, metavar='',
+                        required=True, default='False', help='make dot-plot on feature of interest')
+
     # To format data
     FORMAT = True
 
@@ -719,6 +746,7 @@ if USE_ARGPASE:
     drop_homology = True if args.drop_homology == 'True' else False
     species_id = args.species_id
     output_dir = os.path.join(args.output_dir, model_name)
+    use_foi = True if args.use_foi == 'True' else False
     print('Running script with the following args:', args)
 
 else:
@@ -731,6 +759,7 @@ else:
     drop_homology = True
     species_id = '511145'
     output_dir = os.path.join('benchmark/cog_predictions', model_name)
+    use_foi = False
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(output_dir)
@@ -908,7 +937,11 @@ if '4932' in species_id:
     hold_out_yeast_probas = clf.predict_proba(yeast_output['X_HO'])
     hold_out_yeast_preds = clf.predict(yeast_output['X_HO'])
 
-    # Save predictions for benchmarking
+    if use_foi:
+        pos_probas = [x[1] for x in probas]
+        foi_df = pd.DataFrame({'pos_probas': pos_probas, })
+
+        # Save predictions for benchmarking
     yeast_outs = save_outputs_benchmark(x=x_yeast, probas=yeast_probas,  sid='4932',
                                         direc=output_dir, model_name=model_name)
 

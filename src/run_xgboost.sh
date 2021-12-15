@@ -1,12 +1,12 @@
 #!/bin/bash
 /mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python xgboost_model.py \
---model_name mixed_model \
+--output_dir /models/noise_model/ \
+--model_name mixed_imbalanced \
 --species_id '511145 9606 4932' \
---output_dir cog_test_dir/ \
 --cogs False \
---use_noise False \
---class_weight 1 \
---neg_ratio 1 \
+--use_noise True \
+--class_weight 4 \
+--neg_ratio 4 \
 --drop_homology True \
 
 # ecoli: 511145
