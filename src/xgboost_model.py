@@ -24,21 +24,19 @@ import subprocess
 import json
 
 
-def get_mask(x, substring='9606.'):
-    """Simple boolean search, return True if substring matched, else False.
+def generate_random_hash(hash_list):
+    """Generates a random hash is a COG has no formal grouping
 
-    :param x: annotation data
-    :type x: pandas Series
-    :param substring: organism to query, defaults to '9606.'
-    :type substring: str, optional
-    :return: True if match found, else False
-    :rtype: Bool
+    :param hash_list: list of hash's already used
+    :type hash_list: list
+    :return: random hash, new appended hash_list containing generated hash
+    :rtype: string, lis.
     """
-    spec = x['proteins']
-    if substring in spec:
-        return True
-    else:
-        return False
+    r = ''.join(random.choices(string.ascii_lowercase, k=10))
+    while r in hash_list:
+        r = ''.join(random.choices(string.ascii_lowercase, k=10))
+    hash_list.append(r)
+    return r, hash_list
 
 
 def create_cog_map(spec_kegg, species_id='9606.'):
@@ -57,8 +55,7 @@ def create_cog_map(spec_kegg, species_id='9606.'):
     cog_path = '/mnt/mnemo2/damian/dean/ogs.luca.core.tsv'
     cog_df = pd.read_csv(cog_path, sep='\t', header=0)
     cog_df.columns = ['idk', 'cog_group', 'proteins']
-    mask = cog_df.apply(lambda x: get_mask(x, substring=species_id), axis=1)
-    cogs = cog_df[mask]
+    cogs = cog_df[cog_df['proteins'].str.contains(species_id)]
 
     # For all data in species subset create a mapping
     spec_proteins = list(spec_kegg.protein1.values) + \
@@ -66,15 +63,15 @@ def create_cog_map(spec_kegg, species_id='9606.'):
     spec_proteins = list(set(spec_proteins))
 
     # Extract the cogs that are relevant for the dataset
-    spec_mask = cogs['proteins'].isin(spec_proteins)
-    sample_cogs = cogs[spec_mask]
+    sample_cogs = cogs[cogs['proteins'].isin(spec_proteins)]
 
     # Make a coder and decoder between protein-IDs and COG-IDs
     prot_id = list(sample_cogs['proteins'].values)
     cog_vals = list(sample_cogs['cog_group'].values)
+
     cog_map = dict(zip(prot_id, cog_vals))
     rev_cog_map = dict(zip(cog_vals, prot_id))
-    return cog_map[0], rev_cog_map[0]
+    return cog_map, rev_cog_map
 
 
 def generate_cog_labels(x, cog_map):
@@ -87,28 +84,26 @@ def generate_cog_labels(x, cog_map):
     :return: original x annotated with COG group
     :rtype: pandas DataFrame object
     """
-    # # Check input variables are correct types (must go above any local var defs!)
-    # for i, (k, v) in enumerate(locals().items()):
-    #     input_types = [pd.core.frame.Series, str]
-    #     assert(isinstance(v, input_types[i])), 'Input {} must be of type {}. Got {} instead'.format(
-    #         k, input_types[i], type(v))
-    # # End check
 
     x_cogs = []
+    hash_list = []
     for proteins in x.index:
         try:
             p1, p2 = proteins.split('and')
             cog_pair = sorted([cog_map[p1], cog_map[p2]])
             x_cogs.append(cog_pair)
+
+        # If COG group not listed - create random unique GOC
         except Exception as e:
-            # print(e)
-            x_cogs.append('?')
+            r1, hash_list = generate_random_hash(hash_list)
+            r2, hash_list = generate_random_hash(hash_list)
+            r1 = "".join('hash-' + r1)
+            r2 = "".join('hash-' + r2)
+            x_cogs.append([r1, r2])
 
     # Populate the dataframe with the COGs
     x_cogs = [tuple(x) for x in x_cogs]
     x['cogs'] = x_cogs
-    # Remove any unidentified cogs
-    x = x[x.cogs != ('?',)]
     return x
 
 
