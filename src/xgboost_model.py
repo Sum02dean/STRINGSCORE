@@ -11,14 +11,14 @@ from xgboost import plot_importance
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_curve, auc, recall_score, precision_score, average_precision_score
+from sklearn.preprocessing import StandardScaler, normalize, MinMaxScaler
+
 from sklearn.metrics import accuracy_score
 from collections import Counter as C
 import seaborn as sns
 from tqdm import tqdm
 import time
 import copy
-from copy import deepcopy
-from sklearn.preprocessing import StandardScaler, normalize, MinMaxScaler
 import argparse
 import subprocess
 import json
