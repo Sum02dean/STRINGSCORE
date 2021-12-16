@@ -19,5 +19,3 @@
 #https://towardsdatascience.com/introduction-to-bayesian-logistic-regression-7e39a0bae691
 # - add uncertainty predictions
 # - return most uncertain predictions
-
-
