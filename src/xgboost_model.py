@@ -237,209 +237,75 @@ params = {'max_depth': 15,
           'alpha': 0.1,
           'lambda': 0.01}
 
-# Ecoli
-if '511145' in species_id:
-    print("Computing for Ecoli")
-    ecoli_path = 'data/511145.protein.links.full.v11.5.txt'
-    ecoli_label_path = 'data/ecoli_labels.csv'
-    ecoli = pd.read_csv(ecoli_path, header=0, sep=' ', low_memory=False)
-    ecoli_labels = pd.read_csv(ecoli_label_path, index_col=False, header=None)
+# Map species ID to  name
+species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
 
-    # Format the data
-    if FORMAT:
-        x_ecoli, y_ecoli, ecoli_idx = format_data(
-            ecoli, ecoli_labels, drop_homology=drop_homology)
+# Run code for each species given in bash file
+for (species, species_name) in species_dict.items():
+    if species in species_id:
+        print("Computing for {}".format(species))
+        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        label_path = 'data/{}_labels.csv'.format(species_name)
+        data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
+        labels = pd.read_csv(label_path, index_col=False, header=None)
 
-    t1 = time.time()
+        # Format the data
+        if FORMAT:
+            x, y, idx = format_data(
+                data, labels, drop_homology=drop_homology)
 
-    ecoli_output = run_pipeline(data=x_ecoli, labels=y_ecoli, spec_kegg=ecoli, cogs=use_cogs,
-                                params=params, weights=weights, species_id='511145.', noise=use_noise, neg_ratio=neg_ratio)
-    t2 = time.time()
+        t1 = time.time()
+        output = run_pipeline(data=x, labels=y, spec_kegg=data, cogs=use_cogs,
+                              params=params, weights=weights, species_id='{}.'.format(
+                                  species),
+                              noise=use_noise, neg_ratio=neg_ratio)
+        t2 = time.time()
+        print("Finished training in {}".format(t2-t1))
 
-    print("Finished training in {}".format(t2-t1))
-    clf = ecoli_output['classifier']
-    ecoli_probas = clf.predict_proba(x_ecoli.iloc[:, :])
-    ecoli_preds = clf.predict(x_ecoli.iloc[:, :])
-    hold_out_ecoli_probas = clf.predict_proba(ecoli_output['X_HO'])
-    hold_out_ecoli_preds = clf.predict(ecoli_output['X_HO'])
+        # Make classifications
+        clf = output['classifier']
+        probas = clf.predict_proba(x)
+        preds = clf.predict(x)
+        hold_out_probas = clf.predict_proba(output['X_HO'])
+        hold_out_preds = clf.predict(output['X_HO'])
 
-    # Save benchmarks
-    ecoli_outs = save_outputs_benchmark(x=x_ecoli, probas=ecoli_probas,  sid='511145',
+        # Save benchmarks
+        x_outs = save_outputs_benchmark(x=x, probas=probas,  sid=species,
                                         direc=output_dir, model_name=model_name)
 
-    # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-    benchmark_file = 'data/{}.combined.v11.5.tsv'.format('511145')
-    combined_benchmark = pd.read_csv(
-        benchmark_file, header=None, sep='\t')
+        # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
+        benchmark_file = 'data/{}.combined.v11.5.tsv'.format(species)
+        combined_benchmark = pd.read_csv(benchmark_file, header=None, sep='\t')
 
-    hold_out_ecoli_outs = save_outputs_benchmark(x=ecoli_output['X_HO'], probas=hold_out_ecoli_probas,
-                                                 sid='511145', direc=output_dir,
-                                                 model_name=model_name + '.hold_out')
+        hold_out_ecoli_outs = save_outputs_benchmark(x=output['X_HO'], probas=hold_out_probas,
+                                                     sid=species, direc=output_dir,
+                                                     model_name=model_name + '.hold_out')
 
-    # Filter benchmark set to contain only observations in hold-out
-    hold_out_filtered = get_interesction(
-        target=hold_out_ecoli_outs, ref=combined_benchmark)
+        # Filter benchmark set to contain only observations in hold-out
+        hold_out_filtered = get_interesction(
+            target=hold_out_ecoli_outs, ref=combined_benchmark)
 
-    # Resave the intersect file to the model directory
-    save_dir = os.path.join(
-        output_dir, 'hold_out.{}.combined.v11.5.tsv'.format('511145'))
-    hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
-    # This requires to change the quality json function if dataset is a hold_out set
+        # Resave the intersect file to the model directory
+        save_dir = os.path.join(
+            output_dir, 'hold_out.{}.combined.v11.5.tsv'.format(species))
+        hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
+        # This requires to change the quality json function if dataset is a hold_out set
 
-    # Generate quality reports
-    json_report = generate_quality_json(
-        model_name=model_name, direct=output_dir, sid='511145')
+        # Generate quality reports
+        json_report = generate_quality_json(
+            model_name=model_name, direct=output_dir, sid=species)
 
-    hold_out_json_report = generate_quality_json(
-        model_name=model_name, direct=output_dir, sid='511145', hold_out=True)
+        hold_out_json_report = generate_quality_json(
+            model_name=model_name, direct=output_dir, sid=species, hold_out=True)
 
-    # Call Damian benchark script here
-    print('Running benchmark')
-    command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-        ["{}/quality_full_{}.{}.json".format(
-            output_dir, model_name, '511145')]
-    out = subprocess.run(command)
+        # Call Damian benchark script here
+        print('Running benchmark')
+        command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+            ["{}/quality_full_{}.{}.json".format(
+                output_dir, model_name, species)]
+        out = subprocess.run(command)
 
-    command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-        ["{}/quality_full_{}.hold_out.{}.json".format(
-            output_dir, model_name, '511145')]
-    out = subprocess.run(command)
-
-
-# Human
-if '9606' in species_id:
-    print("Computing for Human")
-    human_path = 'data/9606.protein.links.full.v11.5.txt'
-    human_label_path = 'data/human_labels.csv'
-    human = pd.read_csv(human_path, header=0, sep=' ', low_memory=False)
-    human_labels = pd.read_csv(human_label_path, index_col=False, header=None)
-
-    # Format the data
-    if FORMAT:
-        x_human, y_human, human_idx = format_data(
-            human, human_labels, drop_homology=drop_homology)
-
-    t1 = time.time()
-    human_output = run_pipeline(data=x_human, labels=y_human, spec_kegg=human, cogs=use_cogs,
-                                params=params, weights=weights, species_id='9606.',
-                                noise=use_noise, neg_ratio=neg_ratio)
-    t2 = time.time()
-
-    clf = human_output['classifier']
-    human_probas = clf.predict_proba(x_human.iloc[:, :])
-    human_preds = clf.predict(x_human.iloc[:, :])
-    hold_out_human_probas = clf.predict_proba(human_output['X_HO'])
-    hold_out_preds = clf.predict(human_output['X_HO'])
-
-    # Save benchmarks
-    human_outs = save_outputs_benchmark(x=x_human, probas=human_probas,  sid='9606',
-                                        direc=output_dir, model_name=model_name)
-
-    hold_out_human_outs = save_outputs_benchmark(x=human_output['X_HO'], probas=hold_out_human_probas,
-                                                 sid='9606', direc=output_dir, model_name=model_name + '.hold_out')
-
-    # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-    benchmark_file = 'data/{}.combined.v11.5.tsv'.format('9606')
-    combined_benchmark = pd.read_csv(
-        benchmark_file, header=None, sep='\t')
-
-    # Filter benchmark set to contain only observations in hold-out
-    hold_out_filtered = get_interesction(
-        target=hold_out_human_outs, ref=combined_benchmark)
-
-    # Resave the intersect file to the model directory
-    save_dir = os.path.join(
-        output_dir, 'hold_out.{}.combined.v11.5.tsv'.format('9606'))
-    hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
-    # This requires to change the quality json function if dataset is a hold_out set
-
-    # Generate quality reports
-    json_report = generate_quality_json(
-        model_name=model_name, direct=output_dir, sid='9606')
-
-    hold_out_json_report = generate_quality_json(
-        model_name=model_name, direct=output_dir, sid='9606', hold_out=True)
-
-    print('Running benchmark')
-    command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-        ["{}/quality_full_{}.{}.json".format(
-            output_dir, model_name, '9606')]
-    out = subprocess.run(command)
-
-    command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-        ["{}/quality_full_{}.hold_out.{}.json".format(
-            output_dir, model_name, '9606')]
-    out = subprocess.run(command)
-
-
-# Yeast
-if '4932' in species_id:
-    print("Computing for Yeast")
-    yeast_path = 'data/4932.protein.links.full.v11.5.txt'
-    yeast_label_path = 'data/yeast_labels.csv'
-    yeast = pd.read_csv(yeast_path, header=0, sep=' ', low_memory=False)
-    yeast_labels = pd.read_csv(yeast_label_path, index_col=False, header=None)
-
-    # Format the data
-    if FORMAT:
-        x_yeast, y_yeast, yeast_idx = format_data(
-            yeast, yeast_labels, drop_homology=drop_homology)
-
-    t1 = time.time()
-    yeast_output = run_pipeline(data=x_yeast, labels=y_yeast, spec_kegg=yeast, cogs=use_cogs,
-                                params=params, weights=weights, species_id='4932.', noise=use_noise,  neg_ratio=neg_ratio)
-    t2 = time.time()
-
-    clf = yeast_output['classifier']
-    yeast_probas = clf.predict_proba(x_yeast.iloc[:, :])
-    yeast_preds = clf.predict(x_yeast.iloc[:, :])
-    hold_out_yeast_probas = clf.predict_proba(yeast_output['X_HO'])
-    hold_out_yeast_preds = clf.predict(yeast_output['X_HO'])
-
-    if use_foi:
-        pos_probas = [x[1] for x in probas]
-        foi_df = pd.DataFrame({'pos_probas': pos_probas, })
-
-        # Save predictions for benchmarking
-    yeast_outs = save_outputs_benchmark(x=x_yeast, probas=yeast_probas,  sid='4932',
-                                        direc=output_dir, model_name=model_name)
-
-    # Save held-out predictions for benchmarking
-    hold_out_yeast_outs = save_outputs_benchmark(x=yeast_output['X_HO'], probas=hold_out_yeast_probas,
-                                                 sid='4932', direc=output_dir, model_name=model_name + '.hold_out')
-
-    # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-    benchmark_file = 'data/{}.combined.v11.5.tsv'.format('4932')
-    combined_benchmark = pd.read_csv(
-        benchmark_file, header=None, sep='\t')
-
-    # Filter benchmark set to contain only observations in hold-out
-    hold_out_filtered = get_interesction(
-        target=hold_out_yeast_outs, ref=combined_benchmark)
-
-    # Resave the intersect file to the model directory
-    save_dir = os.path.join(
-        output_dir, 'hold_out.{}.combined.v11.5.tsv'.format('4932'))
-    hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
-    # This requires to change the quality json function if dataset is a hold_out set
-
-    # Generate quality reports
-    json_report = generate_quality_json(
-        model_name=model_name, direct=output_dir, sid='4932')
-
-    hold_out_json_report = generate_quality_json(
-        model_name=model_name, direct=output_dir, sid='4932', hold_out=True)
-
-    # Call benchark script here
-    print('Running benchmark')
-    command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-        ["{}/quality_full_{}.{}.json".format(
-            output_dir, model_name, '4932')]
-    out = subprocess.run(command)
-
-    command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-        ["{}/quality_full_{}.hold_out.{}.json".format(
-            output_dir, model_name, '4932')]
-    out = subprocess.run(command)
-
-print('Script finished.')
+        command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+            ["{}/quality_full_{}.hold_out.{}.json".format(
+                output_dir, model_name, species)]
+        out = subprocess.run(command)
