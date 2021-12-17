@@ -269,26 +269,28 @@ for (species, species_name) in species_dict.items():
         hold_out_probas = clf.predict_proba(output['X_HO'])
         hold_out_preds = clf.predict(output['X_HO'])
 
-        # Save benchmarks
+        # Save data compatible for Damaians benchmark script
         x_outs = save_outputs_benchmark(x=x, probas=probas,  sid=species,
                                         direc=output_dir, model_name=model_name)
 
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-        benchmark_file = 'data/{}.combined.v11.5.tsv'.format(species)
-        combined_benchmark = pd.read_csv(benchmark_file, header=None, sep='\t')
+        combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
+        combined_scores = pd.read_csv(
+            combined_score_file, header=None, sep='\t')
 
-        hold_out_ecoli_outs = save_outputs_benchmark(x=output['X_HO'], probas=hold_out_probas,
-                                                     sid=species, direc=output_dir,
-                                                     model_name=model_name + '.hold_out')
+        hol_out_preds = save_outputs_benchmark(x=output['X_HO'], probas=hold_out_probas,
+                                               sid=species, direc=output_dir,
+                                               model_name=model_name + '.hold_out')
 
-        # Filter benchmark set to contain only observations in hold-out
-        hold_out_filtered = get_interesction(
-            target=hold_out_ecoli_outs, ref=combined_benchmark)
+        # Filter STRING score set to contain only observations in hold-out
+        filtered_string_score = get_interesction(
+            target=hol_out_preds, reference=combined_scores)
 
         # Resave the intersect file to the model directory
         save_dir = os.path.join(
             output_dir, 'hold_out.{}.combined.v11.5.tsv'.format(species))
-        hold_out_filtered.to_csv(save_dir, header=False, index=False, sep='\t')
+        filtered_string_score.to_csv(
+            save_dir, header=False, index=False, sep='\t')
         # This requires to change the quality json function if dataset is a hold_out set
 
         # Generate quality reports
