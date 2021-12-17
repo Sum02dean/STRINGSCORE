@@ -50,7 +50,7 @@ def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
     if cogs:
         print('Generating COG splits')
         # split data on the cogs
-        cog_map, _ = create_cog_map(spec_kegg=spec_kegg, species_id=species_id)
+        cog_map = create_cog_map(spec_kegg=spec_kegg, species_id=species_id)
         pos_tr, pos_te, neg_tr, neg_te = split_on_cogs(x=data, y=labels, cog_map=cog_map,
                                                        neg_ratio=neg_ratio, train_ratio=train_ratio)
 

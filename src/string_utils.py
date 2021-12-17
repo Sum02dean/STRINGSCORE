@@ -13,8 +13,10 @@ from sklearn.metrics import accuracy_score
 from collections import Counter as C
 import seaborn as sns
 from tqdm import tqdm
+import string
 import copy
 import json
+import random
 
 
 def generate_random_hash(hash_list):
@@ -40,8 +42,8 @@ def create_cog_map(spec_kegg, species_id='9606.'):
     :type spec_kegg: pandas.core.Dataframe
     :param species_id: organism of interest(don't forget the '.'), defaults to '9606.'
     :type species_id: str, optional
-    :return: coder, decoder
-    :rtype: dict, dict
+    :return: coder
+    :rtype: dict
     """
 
     # Filter the COGs for a specific organism
@@ -61,10 +63,8 @@ def create_cog_map(spec_kegg, species_id='9606.'):
     # Make a coder and decoder between protein-IDs and COG-IDs
     prot_id = list(sample_cogs['proteins'].values)
     cog_vals = list(sample_cogs['cog_group'].values)
-
     cog_map = dict(zip(prot_id, cog_vals))
-    rev_cog_map = dict(zip(cog_vals, prot_id))
-    return cog_map, rev_cog_map
+    return cog_map
 
 
 def generate_cog_labels(x, cog_map):
@@ -74,7 +74,7 @@ def generate_cog_labels(x, cog_map):
     :type x: pandas.core.DataFrame object
     :param cog_map: COG encoder which maps proteins to respective COG groups
     :type cog_map: dict
-    :return: original x annotated with COG group, were COGS are formated as tuple
+    :return: original x annotated with COG group, were COGS are formated as sorted tuple
     :rtype: pandas DataFrame object
     """
 
