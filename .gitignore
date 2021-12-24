@@ -3,3 +3,7 @@ src/data.zip
 src/ideas.ipynb
 src/models
 src/ideas
+.pytest_cache/
+__pycache__/
+**/__pycache__
+**/.pytest_cache

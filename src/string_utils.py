@@ -277,9 +277,9 @@ def combine_datasets(Xs=[], ys=[], idxs=[]):
 
 
 def model_splits(x, labels, test_ratio):
-    """Splits each x and y set into train and test data respectively
+    """Splits each x and y set into train and test data respectively (NOT on COGS)
 
-    :param x: x-data
+    :param x: x-data with protein names as index
     :type x: pandas.core.DataFrame
     :param labels: y-labels
     :type labels: iterable e.g list, or pandas.core.Series
@@ -297,7 +297,7 @@ def model_splits(x, labels, test_ratio):
 
 
 def scale_features(dtrain, dtest):
-    """Scale the datasets
+    """Scale the datasets between 0-1
 
     :param dtrain: train x-data
     :type dtrain: pandas.core.DataFrame
@@ -512,11 +512,9 @@ def generate_quality_json(model_name, direct, sid='9606', hold_out=False):
 
 
 def get_interesction(target, reference):
-    """Returns a new STRING benchmark dataset where the obersations are those mutual refenence data (formated
+    """Returns a new STRING benchmark dataset where the obersations are those mutual to refenence data (formated
        using save_output_benchmark() as expected for Damians benchmark script). 
-       This allows the combined STRING score dataset to be filtered to include only observations 
-       mutual to the computed hold-out set.
-
+  
     :param target: the hold-out model dataset
     :type target: pandas.core.DataFrame
     :param reference: the STRING score dataset
@@ -549,10 +547,10 @@ def get_interesction(target, reference):
     return intersect
 
 
-def isolate_non_zero_feature(data, predictions, foi='experiments'):
+def isolate_non_zero_feature(data, labels, predictions, foi='experiments'):
     """Sample data which only contains non-zero elements for a given feature of interest (FOI)
 
-    :param data: organism data
+    :param data: organism data protein names are indexes
     :type data: pandas.core.DataFrame object
     :param predictions: predicted probability scores for positive class
     :type predictions: iterable e.g. list
@@ -567,7 +565,9 @@ def isolate_non_zero_feature(data, predictions, foi='experiments'):
     data_exc = data_copy.loc[:, (data_copy.columns != foi)]
     # Extract indices were all row elements evaluate to zero
     idxes = data_exc.loc[(data_exc == 0).all(axis=1)].index
-    # # Use these indices to extract all zero elements where foi is non-zero in original data_copy
-    data_copy['labels'] = predictions
+    # # Use these indices to extract all zero elements where foi is non-zero in original data_copy    
+    data_copy['predictions'] = predictions
+    data_copy['labels'] = labels
+    # Use these indices to extract all rows with all zero elements where foi is non-zero
     foi_data = data_copy.loc[idxes, :]
     return foi_data
