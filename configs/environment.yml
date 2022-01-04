@@ -1,4 +1,4 @@
-name: base
+name: string_score
 channels:
   - defaults
 dependencies:

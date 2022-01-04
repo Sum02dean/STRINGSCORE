@@ -1,12 +1,12 @@
 #!/bin/bash
 /mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python xgboost_model.py \
---output_dir models/noise_model/ \
---model_name code_test \
---species_id '9606' \
+--output_dir models/verbose/ \
+--model_name balanced \
+--species_id '511145 9606 4932' \
 --cogs False \
---use_noise True \
---class_weight 4 \
---neg_ratio 4 \
+--use_noise False \
+--class_weight 1 \
+--neg_ratio 1 \
 --drop_homology True \
 --use_foi False
 

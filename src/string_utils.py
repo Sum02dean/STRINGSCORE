@@ -17,7 +17,15 @@ import string
 import copy
 import json
 import random
-
+import warnings
+from collections import OrderedDict
+import time
+import arviz as az
+import pymc3 as pm
+import theano as thno
+import theano.tensor as T
+from scipy import integrate
+from scipy.optimize import fmin_powell
 
 def generate_random_hash(hash_list):
     """Generates a random hash if a COG has no formal grouping
@@ -153,7 +161,7 @@ def split_on_cogs(x, y, cog_map, neg_ratio=4, test_ratio=0.2):
     :return: positive-train, positive-test, negative-train, negative-test
     :rtype: tulple of pandas.core.DataFrame objects
     """
-
+    np.random.seed(42)
     # Split into positive and negative sets
     x_pos = copy.deepcopy(x[y.labels == 1])
     x_neg = copy.deepcopy(x[y.labels == 0])
@@ -312,8 +320,9 @@ def scale_features(dtrain, dtest):
     return x_train_sc, x_test_sc, mms
 
 
+# Change name to build_xgb_model()
 def build_model(param, class_ratio=1):
-    """Build XBoost model
+    """Build XGBoost model
 
     :param param: param dict containing all of the model parameters
     :type param: dict
@@ -325,8 +334,28 @@ def build_model(param, class_ratio=1):
     # Define the model
     clf = xgb.XGBClassifier(
         **param, verbosity=0, scale_pos_weight=class_ratio, use_label_encoder=False)
-
     return clf
+
+def run_glm_models(df, upper_order=5):
+    """
+    Convenience function:
+    Fit a range of pymc3 models of increasing polynomial complexity.
+    Suggest limit to max order 5 since calculation time is exponential.
+    """
+
+    models, traces = OrderedDict(), OrderedDict()
+
+    for k in range(1, upper_order + 1):
+
+        nm = f"k{k}"
+        fml = create_poly_modelspec(k)
+
+        with pm.Model() as models[nm]:
+            print(f"\nRunning: {nm}")
+            pm.glm.GLM.from_formula(fml, df, family=pm.glm.families.Binomial())
+            traces[nm] = pm.sample(1000, tune=1000, init="adapt_diag", return_inferencedata=True)
+
+    return models, traces
 
 
 def fit(clf, x_train, y_train, x_test, y_test):
@@ -458,7 +487,7 @@ def save_outputs_benchmark(x, probas, sid='511145', direc='benchmark/cog_predict
     return df
 
 
-def generate_quality_json(model_name, direct, sid='9606', hold_out=False):
+def generate_quality_json(model_name, direct, sid='9606', alt=''):
     """Gerneates the quality json file to use for Damaians benchmark script
 
     :param model_name: Name of the model
@@ -467,15 +496,15 @@ def generate_quality_json(model_name, direct, sid='9606', hold_out=False):
     :type direct: str
     :param sid: specied identifier, defaults to '9606'
     :type sid: str, optional
-    :param hold_out: weather the report is about a hold-out set of not, defaults to False
-    :type hold_out: bool, optional
+    :param hold_out: alternative naming convention, defaults to None
+    :type hold_out: string, optional
     :return: json report and saves json to specifies directory path
     :rtype: dictionary
     """
-    if hold_out:
-        model_name += '.hold_out'
-        benchmark_file = "{}/hold_out.{}.combined.v11.5.tsv".format(
-            direct, sid)
+    if alt != '':
+        model_name += '.{}'.format(alt)
+        benchmark_file = "{}/{}.{}.combined.v11.5.tsv".format(
+            direct, alt, sid)
     else:
         benchmark_file = "data/{}.combined.v11.5.tsv".format(sid)
 
@@ -532,7 +561,7 @@ def get_interesction(target, reference):
         names_target.append(p_name)
 
     names_ref = []
-    for row in ref.values:
+    for row in reference.values:
         model, org, p1, p2, score = row
         p_name = ".".join([p1, p2])
         names_ref.append(p_name)

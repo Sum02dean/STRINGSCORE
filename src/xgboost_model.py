@@ -3,7 +3,6 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import accuracy_score
 from collections import Counter as C
-import seaborn as sns
 import time
 import argparse
 import subprocess
@@ -84,6 +83,7 @@ def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
         # Train-test splits
         x_train, x_test, y_train, y_test = model_splits(
             x, y, test_ratio=test_ratio)
+            
         x_test, x_ho, y_test, y_ho = model_splits(
             x_test, y_test, test_ratio=test_ratio)
 
@@ -190,6 +190,7 @@ if USE_ARGPASE:
 
     parser.add_argument('-foi', '--use_foi', type=str, metavar='',
                         required=True, default='False', help='make dot-plot on feature of interest')
+    
 
     # To format data
     FORMAT = True
@@ -262,52 +263,110 @@ for (species, species_name) in species_dict.items():
         t2 = time.time()
         print("Finished training in {}".format(t2-t1))
 
-        # Make classifications
+        ###############################################################################################
+        # Make predictions
+        ###############################################################################################
+        
+        # Grab classifier
         clf = output['classifier']
+
+        # Predict on all data
         probas = clf.predict_proba(x)
         preds = clf.predict(x)
-        hold_out_probas = clf.predict_proba(output['X_HO'])
-        hold_out_preds = clf.predict(output['X_HO'])
 
-        # Save data compatible for Damaians benchmark script
-        x_outs = save_outputs_benchmark(x=x, probas=probas,  sid=species,
-                                        direc=output_dir, model_name=model_name)
+        # Predict on train data
+        x_train = output['X_train']
+        train_probas = clf.predict_proba(x_train)
+        train_preds = clf.predict(x_train)
+
+        # Predict on test data 
+        x_test = output['X_test']
+        test_probas = clf.predict_proba(x_test)
+        test_preds = clf.predict(x_test)
+        
+        # Predict on validation data
+        x_valid = output['X_HO']
+        hold_out_probas = clf.predict_proba(x_valid)
+        hold_out_preds = clf.predict(x_valid)
 
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
         combined_scores = pd.read_csv(
             combined_score_file, header=None, sep='\t')
 
-        hol_out_preds = save_outputs_benchmark(x=output['X_HO'], probas=hold_out_probas,
-                                               sid=species, direc=output_dir,
-                                               model_name=model_name + '.hold_out')
+        # Save data compatible for Damaians benchmark script (all data)
+        x_outs = save_outputs_benchmark(x=x, probas=probas,  sid=species,
+                                        direc=output_dir, model_name=model_name)
 
-        # Filter STRING score set to contain only observations in hold-out
-        filtered_string_score = get_interesction(
-            target=hol_out_preds, reference=combined_scores)
-
-        # Resave the intersect file to the model directory
-        save_dir = os.path.join(
-            output_dir, 'hold_out.{}.combined.v11.5.tsv'.format(species))
-        filtered_string_score.to_csv(
-            save_dir, header=False, index=False, sep='\t')
-        # This requires to change the quality json function if dataset is a hold_out set
-
-        # Generate quality reports
         json_report = generate_quality_json(
-            model_name=model_name, direct=output_dir, sid=species)
+                model_name=model_name, direct=output_dir, sid=species)
 
-        hold_out_json_report = generate_quality_json(
-            model_name=model_name, direct=output_dir, sid=species, hold_out=True)
-
-        # Call Damian benchark script here
-        print('Running benchmark')
+        # Call Damian benchark script on the full data
+        print("Computing summary statistics for full data.")
         command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
             ["{}/quality_full_{}.{}.json".format(
                 output_dir, model_name, species)]
         out = subprocess.run(command)
 
-        command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-            ["{}/quality_full_{}.hold_out.{}.json".format(
-                output_dir, model_name, species)]
-        out = subprocess.run(command)
+        
+        # # Perform filtering on prediction subsets
+        train_preds = save_outputs_benchmark(x=x_train, probas=train_probas,
+                                        sid=species, direc=output_dir,
+                                        model_name=model_name + '.train_data')
+
+        test_preds = save_outputs_benchmark(x=x_test, probas=test_probas,
+                                        sid=species, direc=output_dir,
+                                        model_name=model_name + '.test_data')
+
+        hold_out_preds = save_outputs_benchmark(x=x_valid, probas=hold_out_probas,
+                                            sid=species, direc=output_dir,
+                                            model_name=model_name + '.hold_out_data')
+
+        
+        # Get intersection for all subsets from XGBoost data and combined STRING data
+        filtered_string_score_train = get_interesction(
+            target=train_preds, reference=combined_scores)
+
+        filtered_string_score_test = get_interesction(
+            target=test_preds, reference=combined_scores)
+
+        filtered_string_score_hold_out = get_interesction(
+            target=hold_out_preds, reference=combined_scores)
+
+        # Collect the above outputs into a dictionary
+        data_intersections = {
+            'train_data':filtered_string_score_train,
+            'test_data':filtered_string_score_test,
+            'hold_out_data':filtered_string_score_hold_out
+            }
+
+        ###############################################################################################
+        # Generate quality reports for filtered data
+        ###############################################################################################
+
+        # Re-save the intersect file to the model directory
+        for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
+
+            save_dir = os.path.join(
+                output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
+            
+            filtered_file.to_csv(
+                save_dir, header=False, index=False, sep='\t')
+
+            json_report = generate_quality_json(
+                model_name=model_name, direct=output_dir, sid=species, alt=file_name)
+
+
+            ###############################################################################################
+            # Send outputs to summary statistics test
+            ###############################################################################################
+
+            # Call Damians benchmark script on all of train - test - valid
+            print("Computing summary statistics for {} data.".format(file_name))
+            command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+                ["{}/quality_full_{}.{}.{}.json".format(
+                    output_dir, model_name, file_name, species)]
+            out = subprocess.run(command)
+        
+
+    
