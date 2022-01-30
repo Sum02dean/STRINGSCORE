@@ -104,7 +104,7 @@ def generate_cog_labels(x, cog_map):
 
     # Populate the dataframe with the COGs
     x_cogs = [tuple(x) for x in x_cogs]
-    x['cogs'] = x_cogs
+    x['cogs'] = ["and".join(x) for x in x_cogs]
     return x
 
 
@@ -125,8 +125,8 @@ def sample_cogs(x, class_label=1, shuffle=True, test_ratio=0.5):
     if shuffle:
         x = x.sample(frac=1)
 
-    # Collect and remove duplicates from train set
-    dup_idx = x.cogs.duplicated()
+    # Collect and remove duplicates from data set
+    dup_idx = x.cogs.duplicated(keep='first')
     x_duplicates = x[dup_idx]
     x_filtered = x.drop_duplicates(subset='cogs', keep='first')
 
@@ -137,11 +137,13 @@ def sample_cogs(x, class_label=1, shuffle=True, test_ratio=0.5):
     x_train = pd.concat([x_filtered, x_duplicates])
 
     # Drop any instanes where test COGs are present in train COGs
-    x_train_new = x_train[~x_train.cogs.isin(x_test.cogs)].dropna()
+    x_train = x_train[~x_train.cogs.isin(x_test.cogs)].dropna()
 
     # # Append label
-    x_train_new['labels'] = [class_label] * np.shape(x_train_new)[0]
-    return x_train_new, x_test
+    x_train['labels'] = [class_label] * np.shape(x_train)[0]
+    x_test['labels'] = [class_label] * np.shape(x_test)[0]
+    
+    return x_train, x_test
 
 
 def split_on_cogs(x, y, cog_map, neg_ratio=4, test_ratio=0.2):
@@ -161,33 +163,40 @@ def split_on_cogs(x, y, cog_map, neg_ratio=4, test_ratio=0.2):
     :return: positive-train, positive-test, negative-train, negative-test
     :rtype: tulple of pandas.core.DataFrame objects
     """
-    np.random.seed(42)
+    # np.random.seed(42)
     # Split into positive and negative sets
-    x_pos = copy.deepcopy(x[y.labels == 1])
-    x_neg = copy.deepcopy(x[y.labels == 0])
-
+    
     # Add COG labels to x dataframe
-    x_pos = generate_cog_labels(x_pos, cog_map)
-    x_neg = generate_cog_labels(x_neg, cog_map)
+    x = copy.deepcopy(x)
+    x = generate_cog_labels(x, cog_map)
+
+    x_pos = x[y == 1]
+    x_neg = x[y == 0]
+
+    # x_pos = generate_cog_labels(x_pos, cog_map)
+    # x_neg = generate_cog_labels(x_neg, cog_map)
+
 
     # Upscale based on neg-pos class ratios
-    k_pos = 1
-    k_neg = neg_ratio * k_pos
+    k_pos = int(1/neg_ratio * np.shape(x_pos)[0])
+    k_neg = int(neg_ratio * k_pos)
 
     # Sample from respective datasets
-    x_pos_sample = x_pos.sample(k_pos*np.shape(x_pos)[0])
-    x_neg_sample = x_neg.sample(k_neg*np.shape(x_pos)[0])
+    x_pos_sample = x_pos.sample(n=k_pos)
+    x_neg_sample = x_neg.sample(n=k_neg)
 
+  
     # Generate train-test splits
     pos_train, pos_test = sample_cogs(
         x_pos_sample, class_label=1, test_ratio=test_ratio)
+
     neg_train, neg_test = sample_cogs(
         x_neg_sample, class_label=0, test_ratio=test_ratio)
 
     return pos_train, pos_test, neg_train, neg_test
 
 
-def format_data(data, labels, drop_homology=True):
+def format_data(x_data, y_data, drop_homology=True):
     """Makes certain that only observations with class labels are present,
         sets index as protein pair names.
 
@@ -197,14 +206,14 @@ def format_data(data, labels, drop_homology=True):
     :type labels: int
     :param drop_homology: to drop the homology column, defaults to True
     :type drop_homology: bool, optional
-    :return: returns filtered x with protein pair names as index
-    :rtype: pandas.core.DataFrame object
+    :return: returns new_x, y, idx
+    :rtype: pandas.core.DataFrame object, list, list
     """
-    x = data.copy()
-    y = labels.copy()
+    x = copy.deepcopy(x_data)
+    y = copy.deepcopy(y_data)
+    x['labels'] = y_data
 
     # Remove verbose labels (rows with no pathway membership: 2)
-    x['labels'] = y
     x = x[x['labels'] != 2]
     y = pd.DataFrame(x.labels, columns=['labels'])
 
@@ -214,11 +223,11 @@ def format_data(data, labels, drop_homology=True):
 
     # Drop the labels and other non-appropriate columns
     cols_to_drop = ['protein1', 'protein2', 'combined_score', 'labels']
-    x.drop(columns=cols_to_drop, axis=1, inplace=True)
+    x = x.drop(columns=cols_to_drop, axis=1, inplace=False)
 
     # Drop homology column
     if drop_homology:
-        x.drop(columns=['homology'], axis=1, inplace=True)
+        x = x.drop(columns=['homology'], axis=1, inplace=False)
 
     # Re-index
     x.index = idx
@@ -238,13 +247,14 @@ def pre_process_data(data, labels, balance=True):
     :return: processed x-data, processed y-labels
     :rtype: tuple of pandas DataFrame object and array
     """
-    x = data.copy()
-    labels = labels.copy()
-    x['labels'] = labels
+    x = copy.deepcopy(data)
+    y = copy.deepcopy(labels)
+
+    x['labels'] = y
 
     # Split into class sets
-    x_pos = x[x.labels == 1.0]
-    x_neg = x[x.labels == 0.0]
+    x_pos = x[x.labels == 1]
+    x_neg = x[x.labels == 0]
 
     if balance:
         # Balance the negative dataset via sampling
@@ -255,10 +265,10 @@ def pre_process_data(data, labels, balance=True):
         x = pd.concat([x_pos, x_neg])
 
     # Extract and drop the labels column
-    labels = pd.concat([x_pos.labels, x_neg.labels])
-    labels = x.labels
-    x.drop(columns=['labels'], inplace=True)
-    return x, labels
+    y = pd.concat([x_pos.labels, x_neg.labels])
+    x = x.drop(columns=['labels'], inplace=False)
+    
+    return x, y
 
 
 def combine_datasets(Xs=[], ys=[], idxs=[]):
@@ -284,7 +294,7 @@ def combine_datasets(Xs=[], ys=[], idxs=[]):
     return x, y
 
 
-def model_splits(x, labels, test_ratio):
+def model_splits(x, y, test_ratio):
     """Splits each x and y set into train and test data respectively (NOT on COGS)
 
     :param x: x-data with protein names as index
@@ -296,11 +306,10 @@ def model_splits(x, labels, test_ratio):
     :return: train-test splits for both x-data and y-data
     :rtype: tuple of pandas DataFrame objects
     """
-
+    data = copy.deepcopy(x)
+    labels = copy.deepcopy(y)
     # Split the dataset using scikit learn implimentation
-    x_train, x_test, y_train, y_test = train_test_split(x,
-                                                        labels, test_size=test_ratio,
-                                                        random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(data, labels, test_size=test_ratio, shuffle=True)
     return x_train, x_test, y_train, y_test
 
 
@@ -600,3 +609,38 @@ def isolate_non_zero_feature(data, labels, predictions, foi='experiments'):
     # Use these indices to extract all rows with all zero elements where foi is non-zero
     foi_data = data_copy.loc[idxes, :]
     return foi_data
+
+def split_on_cogs_alt(x, test_size=0.1):
+
+    # Make a copy
+    x_copy = copy.deepcopy(x)
+
+    # Identify all of the duplicate indicies in x_copy
+    dup_idx = x_copy['cogs'].duplicated(keep='first')
+    id_to_drop = dup_idx[dup_idx == True].index
+
+    # Remove all of the indices from x_copy
+    x_copy.drop(id_to_drop, inplace=True)
+
+    # PART 2
+    # Given unique COG df, sample positives and negatives
+    pos_data = x_copy[x_copy.labels == 1]
+    neg_data = x_copy[x_copy.labels == 0]
+
+    # Split on unique x_copy
+    x_train_pos, x_test_pos, _, _ = train_test_split(pos_data, pos_data.labels, test_size=test_size)
+    x_train_neg, x_test_neg, _, _ = train_test_split(neg_data, neg_data.labels, test_size=test_size)
+
+    # Concatenate the positive and negative data for train and test
+    x_train = pd.concat([x_train_pos, x_train_neg])
+    x_test = pd.concat([x_test_pos, x_test_neg])
+
+    # Add back in the duplicated cogs to train set
+    x_train_new = pd.concat([x_train, x.loc[id_to_drop]])
+
+    # Drop any overlapping labels with cogs in common between train and test
+    b = x_train_new['cogs'].isin(x_test['cogs'])
+    id_to_drop = b[b == True].index
+    x_train_final = x_train_new.drop(id_to_drop, inplace=False)
+
+    return x_train_final, x_test

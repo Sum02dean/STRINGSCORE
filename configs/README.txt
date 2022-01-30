@@ -7,3 +7,11 @@ Don't foget to specify the --name as [envname] of your choice. The environment.y
 4. Configure settings in the run_xgboost.sh file
 5. Run pipeline with $: bash run_xgboost.sh
  
+Best params:
+params = {'max_depth': 15,
+          'eta': 0.1,
+          'objective': 'binary:logistic',
+          'alpha': 0.1,
+          'lambda': 0.01, 
+          'subsample':0.9, 
+          'colsample_bynode': 0.2}

@@ -2,156 +2,166 @@ import os
 import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import RepeatedStratifiedKFold
+from scipy import stats
 from collections import Counter as C
 import time
 import argparse
 import subprocess
 from string_utils import *
+import json
+import copy
 
 
-def run_pipeline(data, labels, spec_kegg, params, scale=False, weights=None,
-                 cogs=True, species_id=None, train_ratio=0.8, noise=False, neg_ratio=1, plot=False):
-    """Runs the entire piplie: COG splits --> data preprocessing --> model outputs.
+def run_pipeline(x, params, scale=False, weights=None,
+                 cogs=True, train_ratio=0.8, noise=False,
+                n_runs=3, run_cv=False, verbose_eval=True):
+                  
+    """Runs the entire modeling process, pre-processing has now been migrated to src/pre_process.py.
 
-    :param data: x-data
+    :param data: x-data containing 'labels' and 'cogs' columns
     :type data: pandas DataFrame object
-    :param labels: y-labels
-    :type labels: iterable (e.g. list)
-    :param spec_kegg: species KEGG paths
-    :type spec_kegg: pandas DataFrame object
+
     :param params: model hyper-parameter dictionary
     :type param: dict
+
     :param scale: if True,  scales inputs in range [0,1], defaults to False
     :type scale: bool, optional
+
     :param weights: if provided, upscales the positive class importance during training, defaults to None
     :type weights: float, optional
+
     :param cogs: if True, train and test are split on COG observations, defaults to True
     :type cogs: bool, optional
-    :param species_id: species identifier, defaults to None
-    :type species_id: string, optional
+
     :param train_ratio: the proportion of data used for training, defaults to 0.8
     :type train_ratio: float, optional
+
     :param noise: if True, injects noise term to specified features, defaults to False
     :type noise: bool, optional
+
     :param neg_ratio: the proportion of negative-positive samples, defaults to 1
     :type neg_ratio: int, optional
-    param plot: it True, plots outputs
-    :type plot: bool, defauts to False
+
+    
     :return: Returns an output dict containing key information.
     :rtype: dict
     """
 
-    print(" Beginning pipeline...")
-    # Format the data
-    x, y = pre_process_data(data, labels)
+    print("Beginning pipeline...")
     test_ratio = 1-train_ratio
 
-    if cogs:
-        print('Generating COG splits')
-        # split data on the cogs
-        cog_map = create_cog_map(spec_kegg=spec_kegg, species_id=species_id)
-        pos_tr, pos_te, neg_tr, neg_te = split_on_cogs(x=data, y=labels, cog_map=cog_map,
-                                                       neg_ratio=neg_ratio, train_ratio=train_ratio)
+    # Split the data
+    train_splits  = []
+    test_splits = []
+    models = []
+    predictions = []
+    probabilities = []
+    accuracies = []
 
-        # Generate hold-out set
-        ho_pos = pos_te.sample(frac=test_ratio)
-        ho_neg = neg_te.sample(frac=test_ratio)
-        x_ho = pd.concat([ho_pos, ho_neg])
-        y_ho = x_ho.labels
-        x_ho.drop(columns=['labels', 'cogs'], inplace=True)
+    # Pre-allocate the datasets
+    for i in range(1, n_runs+1):
 
-        # Drop hold-out samples from the test set
-        pos_te = pos_te.drop(ho_pos.index)
-        neg_te = neg_te.drop(ho_neg.index)
+        if cogs:
+            # Stratify data on the ortholog groups
+            print('Generating COG splits for sampling run {}'.format(i))
+            x_train, x_test = split_on_cogs_alt(x=x, test_size=test_ratio)
 
-        # Define the splits
-        x_train = pd.concat([pos_tr, neg_tr])
-        x_test = pd.concat([pos_te, neg_te])
+            # Shuffle the data
+            x_train = x_train.sample(frac=1)
+            x_test = x_test.sample(frac=1)
 
-        # Shuffle the data
-        x_train = x_train.sample(frac=1)
-        x_test = x_test.sample(frac=1)
-        y_train = x_train.labels
-        y_test = x_test.labels
+            # Split on labels
+            y_train = x_train.labels
+            y_test = x_test.labels
+
+        else:
+            # Don't stratify on orthologs and sample uniformly
+            x_train, x_test, y_train, y_test = model_splits(
+                x, y, test_ratio=test_ratio)   
 
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
         x_test.drop(columns=['labels', 'cogs'], inplace=True)
-        print('Done')
 
-    else:
-        # Train-test splits
-        x_train, x_test, y_train, y_test = model_splits(
-            x, y, test_ratio=test_ratio)
-            
-        x_test, x_ho, y_test, y_ho = model_splits(
-            x_test, y_test, test_ratio=test_ratio)
+        # Store all of the unique splits
+        train_splits.append([x_train, y_train])
+        test_splits.append([x_test, y_test])
 
-    # Scale the data if necessary
-    if scale:
-        x_train, x_test, mms = scale_features(x_train, x_test)
+    # CML message
+    print("Complete with no errors")
+    print('Done\n')
+   
 
-    if noise:
+    # Train across n-unique subsets of the data
+    for i in range(len(train_splits)):
+        print("Computing predictinos for sampling run {}".format(i+1))
+        x_train, y_train = train_splits[i]
+        x_test, y_test = test_splits[i]
+        
+        # Scale the data if necessary
+        if scale:
+            x_train, x_test, mms = scale_features(x_train, x_test)
 
-        # Add normally distributed noise to following features
-        perturb = [
-            'neighborhood_transferred',
-            'experiments_transferred',
-            'textmining',
-            'textmining_transferred',
-            'experiments',
-            'experiments_transferred',
-            'coexpression_transferred'
-        ]
+        if noise:
 
-        # Define guassian noise parameters
-        mu = 0
-        sigma = 0.005
+            # Add normally distributed noise to following features
+            perturb = [
+                'neighborhood_transferred',
+                'experiments_transferred',
+                'textmining',
+                'textmining_transferred',
+                'experiments',
+                'experiments_transferred',
+                'coexpression_transferred']
 
-        x_train = x_train.apply(lambda x: inject_noise(
-            x, mu=mu, sigma=sigma) if x.name in perturb else x)
-        x_test = x_test.apply(lambda x: inject_noise(
-            x, mu=mu, sigma=sigma) if x.name in perturb else x)
-        x_ho = x_ho.apply(lambda x: inject_noise(
-            x, mu=mu, sigma=sigma) if x.name in perturb else x)
+            # Define guassian noise argumnets
+            mu = 0
+            sigma = 0.005
 
-    # Model init
-    # increased weight applied to the positive class
-    print('Building and Fitting model')
-    clf = build_model(params, class_ratio=weights)
+            x_train = x_train.apply(lambda x: inject_noise(
+                x, mu=mu, sigma=sigma) if x.name in perturb else x)
 
-    # Predict
-    clf = fit(clf, x_train, y_train, x_test, y_test)
-    clf, preds, probas, acc, _ = predict(clf, x_test, y_test)
-    print('Done')
+            x_test = x_test.apply(lambda x: inject_noise(
+                x, mu=mu, sigma=sigma) if x.name in perturb else x)
+        
+           
+        if run_cv:
+            # Perform cross-validation on each of the differential splits
+            dtrain = xgb.DMatrix(x_train, label=y_train)
+            cv_results = xgb.cv(dtrain=dtrain, params=params, nfold=5,
+                                    metrics="auc", as_pandas=True, stratified=True, 
+                                    verbose_eval=verbose_eval)
 
-    # Perform cross validation scoring
-    print('Generating CV results')
-    dtrain = xgb.DMatrix(x_train, label=y_train)
-    dtest = xgb.DMatrix(x_test, label=y_test)
-    cv_results = xgb.cv(dtrain=dtrain, params=params, nfold=5,
-                        metrics="auc", as_pandas=True, seed=123)
-    print(cv_results)
-    print('Done')
 
-    # plot ROC curve
-    score = plot_roc(y_test=y_test, probas=probas, plot=False)
-    acc = accuracy_score(y_test, preds)
+        # Make a one time prediction for each of the splits
+        clf = build_model(params, class_ratio=weights)
+        clf = fit(clf, x_train, y_train, x_test, y_test)
+        clf, preds, probas, acc, _ = predict(clf, x_test, y_test)
+
+        # Collect the model specific data
+        models.append(clf)
+        predictions.append(preds)
+        probabilities.append(probas)
+        accuracies.append(acc)
 
     output_dict = {
-        'preds': preds,
-        'probas': probas,
-        'accuracy': acc,
-        'score': score,
-        'classifier': clf,
-        'y_train': y_train,
-        'y_test': y_test,
-        'X_train': x_train,
-        'X_test': x_test,
-        'X_HO': x_ho,
-        'y_HO': y_ho
-    }
+            'predictions': predictions,
+            'probabilities': probabilities,
+            'classifier': models,
+            'train_splits': train_splits,
+            'test_splits': test_splits,
+        }
+
     return output_dict
+
+def mean_probas(x, clfs):
+    probabilities = 0
+    for clf in clfs:
+        probas = clf.predict_proba(x)
+        probabilities += probas
+    probas = probabilities/len(clfs)
+    return probas
 
 
 ###############################################################################################
@@ -191,6 +201,9 @@ if USE_ARGPASE:
     parser.add_argument('-foi', '--use_foi', type=str, metavar='',
                         required=True, default='False', help='make dot-plot on feature of interest')
     
+    parser.add_argument('-ns', '--n_samples', type=int, metavar='',
+                        required=True, default=3, help='number of randomised samplings')
+    
 
     # To format data
     FORMAT = True
@@ -207,11 +220,12 @@ if USE_ARGPASE:
     output_dir = os.path.join(args.output_dir, model_name)
     use_foi = True if args.use_foi == 'True' else False
     print('Running script with the following args:', args)
+    n_samples = args.n_samples
 
 else:
     # Define defaults without using Argparse
     model_name = 'model_0'
-    use_cogs = True
+    use_cogs = False
     weights = 4
     use_noise = True
     neg_ratio = 4
@@ -236,130 +250,100 @@ params = {'max_depth': 15,
           'eta': 0.1,
           'objective': 'binary:logistic',
           'alpha': 0.1,
-          'lambda': 0.01}
+          'lambda': 0.01, 
+          'subsample':0.9, 
+          'colsample_bynode': 0.2}
 
 # Map species ID to  name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
 
-# Run code for each species given in bash file
+# Run code for each species given in bash file: so this n_runs times to reduce stochasticity 
+n_runs = 4
+predictions = []
+probabilities = []
+
 for (species, species_name) in species_dict.items():
     if species in species_id:
         print("Computing for {}".format(species))
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-        label_path = 'data/{}_labels.csv'.format(species_name)
-        data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
-        labels = pd.read_csv(label_path, index_col=False, header=None)
+        # label_path = 'data/{}_labels.csv'.format(species_name)
+        # labels = pd.read_csv(label_path, index_col=False, header=None)
+        kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
-        # Format the data
-        if FORMAT:
-            x, y, idx = format_data(
-                data, labels, drop_homology=drop_homology)
+        # Load in pre-defined train and validate sets
+        train_path = "pre_processed_data/script_test/{}_train.csv".format(species_name)
+        valid_path = "pre_processed_data/script_test/{}_valid.csv".format(species_name)
+        
+        # Load train, test, valid data
+        train_data = pd.read_csv(train_path, header=0, low_memory=False, index_col=0)
+        valid_data = pd.read_csv(valid_path, header=0, low_memory=False, index_col=0)
 
+
+        # Remove regference to the original data 
+        x = copy.deepcopy(train_data)
+        v = copy.deepcopy(valid_data)
+    
         t1 = time.time()
-        output = run_pipeline(data=x, labels=y, spec_kegg=data, cogs=use_cogs,
-                              params=params, weights=weights, species_id='{}.'.format(
-                                  species),
-                              noise=use_noise, neg_ratio=neg_ratio)
+        output = run_pipeline(x=x,cogs=use_cogs,
+                            params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_samples)
         t2 = time.time()
         print("Finished training in {}".format(t2-t1))
+
+        
+
+            
 
         ###############################################################################################
         # Make predictions
         ###############################################################################################
         
-        # Grab classifier
-        clf = output['classifier']
 
-        # Predict on all data
-        probas = clf.predict_proba(x)
-        preds = clf.predict(x)
 
-        # Predict on train data
-        x_train = output['X_train']
-        train_probas = clf.predict_proba(x_train)
-        train_preds = clf.predict(x_train)
+        # Grab classifier(s)
+        classifiers = output['classifier']
 
-        # Predict on test data 
-        x_test = output['X_test']
-        test_probas = clf.predict_proba(x_test)
-        test_preds = clf.predict(x_test)
+        # Remove COG labels from the data 
+        x.drop(columns=['labels', 'cogs'], inplace=True)
+        v.drop(columns=['labels', 'cogs'], inplace=True)
+
+        # Get ensemble probabilities
+        ensemble_probas_x = mean_probas(x, classifiers)
+        ensemble_probas_v = mean_probas(v, classifiers)
         
-        # Predict on validation data
-        x_valid = output['X_HO']
-        hold_out_probas = clf.predict_proba(x_valid)
-        hold_out_preds = clf.predict(x_valid)
-
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
-        combined_scores = pd.read_csv(
-            combined_score_file, header=None, sep='\t')
+        combined_scores = pd.read_csv(combined_score_file, header=None, sep='\t')
+
 
         # Save data compatible for Damaians benchmark script (all data)
-        x_outs = save_outputs_benchmark(x=x, probas=probas,  sid=species,
-                                        direc=output_dir, model_name=model_name)
-
-        json_report = generate_quality_json(
-                model_name=model_name, direct=output_dir, sid=species)
-
-        # Call Damian benchark script on the full data
-        print("Computing summary statistics for full data.")
-        command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-            ["{}/quality_full_{}.{}.json".format(
-                output_dir, model_name, species)]
-        out = subprocess.run(command)
-
+        x_outs = save_outputs_benchmark(x=x, probas=ensemble_probas_x,  sid=species,
+                                        direc=output_dir, model_name=model_name + '.train_data')
         
-        # # Perform filtering on prediction subsets
-        train_preds = save_outputs_benchmark(x=x_train, probas=train_probas,
-                                        sid=species, direc=output_dir,
-                                        model_name=model_name + '.train_data')
+        v_outs = save_outputs_benchmark(x=v, probas=ensemble_probas_v,  sid=species,
+                                        direc=output_dir, model_name=model_name + '.hold_out_data')
 
-        test_preds = save_outputs_benchmark(x=x_test, probas=test_probas,
-                                        sid=species, direc=output_dir,
-                                        model_name=model_name + '.test_data')
 
-        hold_out_preds = save_outputs_benchmark(x=x_valid, probas=hold_out_probas,
-                                            sid=species, direc=output_dir,
-                                            model_name=model_name + '.hold_out_data')
+        # Get the intersection benchmark plot 
+        filtered_string_score_x = get_interesction(target=x_outs, reference=combined_scores)
+        filtered_string_score_v = get_interesction(target=v_outs, reference=combined_scores)
 
-        
-        # Get intersection for all subsets from XGBoost data and combined STRING data
-        filtered_string_score_train = get_interesction(
-            target=train_preds, reference=combined_scores)
-
-        filtered_string_score_test = get_interesction(
-            target=test_preds, reference=combined_scores)
-
-        filtered_string_score_hold_out = get_interesction(
-            target=hold_out_preds, reference=combined_scores)
-
-        # Collect the above outputs into a dictionary
         data_intersections = {
-            'train_data':filtered_string_score_train,
-            'test_data':filtered_string_score_test,
-            'hold_out_data':filtered_string_score_hold_out
-            }
+        'train_data': filtered_string_score_x,
+        'hold_out_data': filtered_string_score_v}
 
-        ###############################################################################################
-        # Generate quality reports for filtered data
-        ###############################################################################################
-
-        # Re-save the intersect file to the model directory
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
-
-            save_dir = os.path.join(
-                output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
             
+            # Save data compatible for Damaians benchmark script (all data)
+            save_dir = os.path.join(
+                    output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
+
             filtered_file.to_csv(
-                save_dir, header=False, index=False, sep='\t')
+                    save_dir, header=False, index=False, sep='\t')
 
+                                            
             json_report = generate_quality_json(
-                model_name=model_name, direct=output_dir, sid=species, alt=file_name)
+                    model_name=model_name, direct=output_dir, sid=species, alt=file_name)
 
-
-            ###############################################################################################
-            # Send outputs to summary statistics test
-            ###############################################################################################
 
             # Call Damians benchmark script on all of train - test - valid
             print("Computing summary statistics for {} data.".format(file_name))
@@ -369,4 +353,4 @@ for (species, species_name) in species_dict.items():
             out = subprocess.run(command)
         
 
-    
+
