@@ -26,6 +26,8 @@ import theano as thno
 import theano.tensor as T
 from scipy import integrate
 from scipy.optimize import fmin_powell
+from collections import defaultdict
+
 
 def generate_random_hash(hash_list):
     """Generates a random hash if a COG has no formal grouping
@@ -197,15 +199,18 @@ def split_on_cogs(x, y, cog_map, neg_ratio=4, test_ratio=0.2):
 
 
 def format_data(x_data, y_data, drop_homology=True):
-    """Makes certain that only observations with class labels are present,
-        sets index as protein pair names.
+    """Makes certain that only observations with class labels are present, drops combined_score,
+        sets index as protein pair names, optionally removes homology.
 
     :param data: x_data
     :type data: pandas.core.DataFrame
+
     :param labels: class labels {0:negatives, 1:positives, 2:no-membership}
     :type labels: int
+    
     :param drop_homology: to drop the homology column, defaults to True
     :type drop_homology: bool, optional
+    
     :return: returns new_x, y, idx
     :rtype: pandas.core.DataFrame object, list, list
     """
@@ -642,5 +647,111 @@ def split_on_cogs_alt(x, test_size=0.1):
     b = x_train_new['cogs'].isin(x_test['cogs'])
     id_to_drop = b[b == True].index
     x_train_final = x_train_new.drop(id_to_drop, inplace=False)
-
     return x_train_final, x_test
+
+    # ==================== Label Generation utils ===========================
+
+def get_protein_names(X):
+    """ Precomputes set of all protein names, returns a list. """
+    prot1_names = [x.split('.')[-1] for x in set(X.protein1.values)]
+    prot2_names = [x.split('.')[-1] for x in set(X.protein2.values)]
+    return list(set(prot1_names + prot2_names))
+
+def get_pathway_maps(X, pathway_names, pathway_members):
+    pathway_members = [list(x.split(" ")) for x in pathway_members.values]
+    """ Precomputes mapping between pathway names and proteins in that pathway. """
+    pw_map = dict(zip(pathway_names, pathway_members))
+    return pw_map
+ 
+def get_memberships(protein_names, pathway_map):
+    """ Precomputes mapping between protein and all of its pathway memberships"""
+    protein_membership = defaultdict()
+    # Iterate over each protein
+    for i, protein in enumerate(protein_names):
+        # Create entry in dict if not present
+        if protein not in protein_membership.keys():
+            protein_membership[protein] = []
+
+        # If protein identified in pathway proteins, map protein to the pathway name
+        for  j, (pathway_name, pathway_proteins) in enumerate(pathway_map.items()):
+            if protein in pathway_proteins:
+                # Add pathway map to protein entry
+                protein_membership[protein].append(pathway_name)
+                # Make sure only one pathway name is given once
+                protein_membership[protein] = list(set(protein_membership[protein]))
+    return protein_membership
+
+def check_labels(p1, p2, protein_membership):
+    " Identifies intersection of pathway memberships for each protein in the pair"
+    # Grab memberships
+    membership_1 = protein_membership[p1]
+    membership_2 = protein_membership[p2]
+    
+    # Get intersection
+    compare = set(membership_1) & set(membership_2)
+
+    # If one of the members have no membership
+    if membership_1 ==[] or membership_2 ==[]:
+        return 2
+    # If there is an intersection between pathways
+    elif len(compare) > 0:
+        return 1
+    # If there is no intersection
+    elif len(compare) == 0:
+        return 0
+
+def write_file(fn, x):
+    """ Write the labels to file dynamically"""
+    x = str(x)
+    file_object = open(fn, 'a')
+    file_object.write(x + '\n')
+    return file_object
+    
+def generate_labels(X, pathway_names, pathway_members, file_name, verbosity=0):
+    """ The full pipline"""
+    # 1. Get protein names
+    protein_names = get_protein_names(X)
+    # 2. Get pathway maps
+    pathway_map = get_pathway_maps(X, pathway_names, pathway_members)
+    # 3. Get memberships
+    protein_membership = get_memberships(protein_names, pathway_map)
+    
+    
+    #4. Generate labels
+    protein_pairs = X.iloc[:, :2].values
+    labels = np.zeros(shape=(np.shape(protein_pairs)[0], 1))
+    for i, (protein_1, protein_2) in enumerate(protein_pairs):
+        try:
+            # Look up protein entry 
+            p1 = protein_1.split('.')[-1]
+            p2 = protein_2.split('.')[-1]
+            label = check_labels(p1, p2, protein_membership)
+            file_object = write_file(file_name, label)
+            labels[i] = check_labels(p1, p2, protein_membership)
+        except:
+            # If entry not found
+            labels[i]
+            label = 3
+            file_object = write_file(file_name, label)
+            
+            
+    # Class labels only
+    verbose_0_labels = labels[labels != 2]
+    verbose_0_labels = verbose_0_labels[verbose_0_labels != 3]
+    
+    # Class labels and non-membership
+    verbose_1_labels = labels[labels != 3]
+    
+    # Class labels, non-membership and missingness
+    verbose_2_labels = labels
+    
+    if verbosity == 0:
+        outputs = verbose_0_labels
+        
+    elif verbosity == 1:
+        outputs = verbose_1_labels
+    elif verbosity == 2:
+        outputs = verbose_2_labels
+    file_object.close()
+    return outputs
+    

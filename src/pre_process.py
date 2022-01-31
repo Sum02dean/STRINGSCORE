@@ -61,10 +61,10 @@ if not isExist:
     print("{} directory created.".format(output_dir))
 
 for (species, species_name) in species_dict.items():
+    
     if species in species_id:
-
-        print("Pre-processing data for {}".format(species))
         # Execute data correction
+        print("Pre-processing data for {}".format(species))
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
         label_path = 'data/{}_labels.csv'.format(species_name)
         data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
