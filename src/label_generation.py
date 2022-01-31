@@ -48,34 +48,10 @@ if not isExist:
 for (species, species_name) in species_dict.items():
     if species in species_id:
         print("Generating labels for {}.".format(species_name))
-        fn = os.path.join(output_dir,'{}_labels_debug.csv'.format(species_name))
+        fn = os.path.join(output_dir,'{}_labels.csv'.format(species_name))
         
         # Generate the labels
         species_x = full_kegg[full_kegg[0] == int(species)]
         species_kegg = pd.read_csv('data/{}.protein.links.full.v11.5.txt'.format(species), sep=' ', header=0)
         ecoli_labels = generate_labels(X=species_kegg, pathway_names=species_x[1], pathway_members=species_x[3], file_name=fn, verbosity=2)
 print("Finished generating labels for all.")
-        
-
-
-
-
-
-
-
-# # Subset pathway sets for species entries
-# ecoli = full_kegg[full_kegg[0] == 511145]
-# human = full_kegg[full_kegg[0] == 9606]
-# yeast = full_kegg[full_kegg[0] == 4932]
-
-# # Load in all species KEGG sets
-# ecoli_kegg = pd.read_csv('511145.protein.links.full.v11.5.txt', sep=' ', header=0)
-# human_kegg = pd.read_csv('9606.protein.links.full.v11.5.txt', sep=' ', header=0)
-# yeast_kegg = pd.read_csv('4932.protein.links.full.v11.5.txt', sep=' ', header=0)
-
-
-# # Create a dict with useful variables
-# ecoli_labels = generate_labels(X=ecoli_kegg, pathway_names=ecoli[1], pathway_members=ecoli[3], file_name='data/ecoli_labels.csv', verbosity=2)
-# yeast_labels = generate_labels(X=yeast_kegg, pathway_names=yeast[1], pathway_members=yeast[3], file_name='data/yeast_labels.csv', verbosity=2)
-# human_labels = generate_labels(X=human_kegg, pathway_names=human[1], pathway_members=human[3], file_name='data/human_labels.csv', verbosity=2)
-
