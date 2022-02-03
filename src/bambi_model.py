@@ -1,22 +1,30 @@
+import sys
 import os
 import pandas as pd
-import xgboost as xgb
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import RepeatedStratifiedKFold
-from scipy import stats
-from collections import Counter as C
-import time
+src_path = os.getcwd().replace('/ideas', '')
+sys.path.append(src_path)
+from string_utils import *
+from sklearn.model_selection import StratifiedKFold, KFold
+import numpy as np
+import matplotlib.pyplot as plt
+import arviz as az
+import pymc3 as pm
+import theano as thno
+import theano.tensor as T
+from scipy import integrate
+from scipy.optimize import fmin_powell
+import seaborn as sns
+import bambi as bmb
 import argparse
 import subprocess
-from string_utils import *
-import json
-import copy
+import time
 
 
-def run_pipeline(x, params, scale=False, weights=None,
-                 cogs=True, train_ratio=0.8, noise=False,
-                n_runs=3, run_cv=False, verbose_eval=True):
-                  
+
+
+def run_pipeline(x, params, scale=False, weights=None, cogs=True, 
+                train_ratio=0.8, noise=False, n_runs=3, run_cv=False, verbose_eval=True):
+
     """Runs the entire modeling process, pre-processing has now been migrated to src/pre_process.py.
 
     :param data: x-data containing 'labels' and 'cogs' columns
@@ -55,9 +63,9 @@ def run_pipeline(x, params, scale=False, weights=None,
     train_splits  = []
     test_splits = []
     models = []
+    classifiers = []
     predictions = []
-    probabilities = []
-    accuracies = []
+    
 
     # Pre-allocate the datasets
     for i in range(1, n_runs+1):
@@ -78,7 +86,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         else:
             # Don't stratify on orthologs and sample uniformly
             x_train, x_test, y_train, y_test = model_splits(
-                x, y, test_ratio=test_ratio)   
+                x, x.labels, test_ratio=test_ratio)   
 
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
@@ -102,10 +110,9 @@ def run_pipeline(x, params, scale=False, weights=None,
         # Scale the data if necessary
         if scale:
             x_train, x_test, mms = scale_features(x_train, x_test)
-
+        
+        # Add normally distributed noise to following features
         if noise:
-
-            # Add normally distributed noise to following features
             perturb = [
                 'neighborhood_transferred',
                 'experiments_transferred',
@@ -125,55 +132,64 @@ def run_pipeline(x, params, scale=False, weights=None,
             x_test = x_test.apply(lambda x: inject_noise(
                 x, mu=mu, sigma=sigma) if x.name in perturb else x)
         
-           
-        if run_cv:
-            # Perform cross-validation on each of the differential splits
-            dtrain = xgb.DMatrix(x_train, label=y_train)
-            cv_results = xgb.cv(dtrain=dtrain, params=params, nfold=5,
-                                    metrics="auc", as_pandas=True, stratified=True, 
-                                    verbose_eval=verbose_eval)
 
+        # Run probabilistic LR bambi model
+        x_train['y'] = y_train
+        
+        # Get the function formula
+        f = get_formula(x_train.columns[:-1])
 
-        # Make a one time prediction for each of the splits
-        clf = build_model(params, class_ratio=weights)
-        clf = fit(clf, x_train, y_train, x_test, y_test)
-        clf, preds, probas, acc, _ = predict(clf, x_test, y_test)
-
-        # Collect the model specific data
-        models.append(clf)
-        predictions.append(preds)
-        probabilities.append(probas)
-        accuracies.append(acc)
-
-    output_dict = {
-            'predictions': predictions,
-            'probabilities': probabilities,
-            'classifier': models,
-            'train_splits': train_splits,
-            'test_splits': test_splits,
-        }
+        model = bmb.Model(f, x_train, family=params['family'])
+        clf = model.fit(draws=params['draws'], tune=params['tune'], chains=params['chains'])
+        models.append(model)
+        classifiers.append(clf)
+        
+        # Run predictions
+        idata = model.predict(clf, data=x_test, inplace=False)
+        mean_preds = idata.posterior["y_mean"].values
+        predictions.append(mean_preds)
+        
+        # Collect outputs
+        output_dict = {
+        'predictions': predictions,
+        'models': models,
+        'classifiers': classifiers,
+        'train_splits': train_splits,
+        'test_splits': test_splits}
 
     return output_dict
 
-def mean_probas(x, clfs):
-    probabilities = 0
-    for clf in clfs:
-        probas = clf.predict_proba(x)
-        probabilities += probas
-    probas = probabilities/len(clfs)
-    return probas
+def get_formula(feature_names):
+    template = ['{}'] * (len(feature_names))
+    template = " + ".join(template)
+    template = template.format(*list(feature_names))
+    f = 'y ~ ' +  template 
+    return f
 
+def mean_probas(x, model, classifiers):
+    mp =np.zeros(np.shape(x)[0])
+
+    for i in range(len(models)):
+        idata = model[i].predict(classifiers[i], data=x, inplace=False)
+        mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
+    
+    # Get the man proabilities
+    ensemble_probas = mp / len(models)
+    # This is a hack to guarentee that the probas work with the generate_output() script
+    ensemble_probas = [(x,x) for x in ensemble_probas]
+    return ensemble_probas
 
 ###############################################################################################
 # START SCRIPT
 ###############################################################################################
 
 
+
 # Extract input variables from Argparse
 USE_ARGPASE = True
 
 if USE_ARGPASE:
-    parser = argparse.ArgumentParser(description='XGBoost')
+    parser = argparse.ArgumentParser(description='bambi')
     parser.add_argument('-n', '--model_name', type=str, metavar='',
                         required=True, default='model_0', help='name of the model')
 
@@ -204,11 +220,22 @@ if USE_ARGPASE:
     parser.add_argument('-ns', '--n_samples', type=int, metavar='',
                         required=True, default=3, help='number of randomised samplings')
     
+    parser.add_argument('-nc', '--n_chains', type=int, metavar='',
+                        required=True, default=1000, help='number of chains')
 
-    # To format data
+    parser.add_argument('-nd', '--n_draws', type=int, metavar='',
+                        required=True, default=100, help='number of draws per chain')
+    
+    parser.add_argument('-nt', '--n_tune', type=int, metavar='',
+                        required=True, default=100, help='number of iterations to tune in NUTS')
+    
+    parser.add_argument('-fam', '--family', type=str, metavar='',
+                    required=True, default='bernoulli', help='prior family to use')
+    
+    
+
+    # Parse agrs
     FORMAT = True
-
-    # Parse args
     args = parser.parse_args()
     model_name = args.model_name
     use_cogs = True if args.cogs == 'True' else False
@@ -220,12 +247,16 @@ if USE_ARGPASE:
     output_dir = os.path.join(args.output_dir, model_name)
     use_foi = True if args.use_foi == 'True' else False
     n_samples = args.n_samples
+    n_chains= args.n_chains
+    n_draws= args.n_draws
+    n_tune= args.n_tune
+    family = args.family
     print('Running script with the following args:\n', args)
     print('\n')
 
 else:
     # Define defaults without using Argparse
-    model_name = 'model_0'
+    model_name = 'bambi_model_0'
     use_cogs = False
     weights = 4
     use_noise = True
@@ -234,6 +265,11 @@ else:
     species_id = '511145'
     output_dir = os.path.join('benchmark/cog_predictions', model_name)
     use_foi = False
+    n_samples = 1
+    n_chains= 4
+    n_draws= 100
+    n_tune= 300
+    family = 'bernoulli'
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(output_dir)
@@ -246,29 +282,24 @@ if not isExist:
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-# Run the full pipeline (these values have been optimised, don't change!)
-params = {'max_depth': 15,
-          'eta': 0.1,
-          'objective': 'binary:logistic',
-          'alpha': 0.1,
-          'lambda': 0.01, 
-          'subsample':0.9, 
-          'colsample_bynode': 0.2}
-
 # Map species ID to  name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
+full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-# Run code for each species given in bash file: so this n_runs times to reduce stochasticity 
-n_runs = 4
-predictions = []
-probabilities = []
+# Define model parameters
+params = {
+    'family': family,
+    'chains': n_chains,
+    'draws': n_draws, 
+    'tune': n_tune}
+
 
 for (species, species_name) in species_dict.items():
     if species in species_id:
+
         print("Computing for {}".format(species))
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-        # label_path = 'data/{}_labels.csv'.format(species_name)
-        # labels = pd.read_csv(label_path, index_col=False, header=None)
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
         # Load in pre-defined train and validate sets
@@ -276,22 +307,21 @@ for (species, species_name) in species_dict.items():
         valid_path = "pre_processed_data/script_test/{}_valid.csv".format(species_name)
         all_path = 'pre_processed_data/script_test/{}_all.csv'.format(species_name)    
 
+        
         # Load train, test, valid data
         train_data = pd.read_csv(train_path, header=0, low_memory=False, index_col=0)
         valid_data = pd.read_csv(valid_path, header=0, low_memory=False, index_col=0)
         all_data = pd.read_csv(all_path, header=0, low_memory=False, index_col=0)
 
-
         # Load in all data even without KEGG memberships
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
         x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
-        
 
-        # Remove regference to the original data  (uncomment as necessary)
+
+        # Remove regference to the original data 
         x = copy.deepcopy(train_data)
         a = copy.deepcopy(all_data)
         v = copy.deepcopy(valid_data)
-        
     
         t1 = time.time()
         output = run_pipeline(x=x,cogs=use_cogs,
@@ -299,18 +329,18 @@ for (species, species_name) in species_dict.items():
         t2 = time.time()
         print("Finished training in {}".format(t2-t1))
 
-        
 
-            
 
-        ###############################################################################################
+
+       ###############################################################################################
         # Make predictions
         ###############################################################################################
         
 
 
         # Grab classifier(s)
-        classifiers = output['classifier']
+        classifiers = output['classifiers']
+        models = output['models']
 
         # Remove COG labels from the data 
         # x.drop(columns=['labels', 'cogs'], inplace=True)
@@ -320,8 +350,8 @@ for (species, species_name) in species_dict.items():
         v.drop(columns=['labels', 'cogs'], inplace=True)
 
         # Get ensemble probabilities
-        ensemble_probas_x = mean_probas(x, classifiers)
-        ensemble_probas_v = mean_probas(v, classifiers)
+        ensemble_probas_x = mean_probas(x, model=models, classifiers=classifiers)
+        ensemble_probas_v = mean_probas(v, model=models, classifiers=classifiers)
         
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
@@ -364,6 +394,3 @@ for (species, species_name) in species_dict.items():
                 ["{}/quality_full_{}.{}.{}.json".format(
                     output_dir, model_name, file_name, species)]
             out = subprocess.run(command)
-        
-
-
