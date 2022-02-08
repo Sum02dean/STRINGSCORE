@@ -11,6 +11,7 @@ import subprocess
 from string_utils import *
 import json
 import copy
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 def run_pipeline(x, params, scale=False, weights=None,
@@ -101,7 +102,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         
         # Scale the data if necessary
         if scale:
-            x_train, x_test, mms = scale_features(x_train, x_test)
+            x_train, x_test, mms = scale_features(x_train, x_test, method='standard')
 
         if noise:
 
@@ -150,8 +151,8 @@ def run_pipeline(x, params, scale=False, weights=None,
             'probabilities': probabilities,
             'classifier': models,
             'train_splits': train_splits,
-            'test_splits': test_splits,
-        }
+            'test_splits': test_splits
+            }
 
     return output_dict
 
@@ -204,6 +205,9 @@ if USE_ARGPASE:
     parser.add_argument('-ns', '--n_samples', type=int, metavar='',
                         required=True, default=3, help='number of randomised samplings')
     
+    parser.add_argument('-pp', '--pre_process', type=str, metavar='',
+                        required=True, default='False', help='to pre-process train and test splits')
+    
 
     # To format data
     FORMAT = True
@@ -220,6 +224,8 @@ if USE_ARGPASE:
     output_dir = os.path.join(args.output_dir, model_name)
     use_foi = True if args.use_foi == 'True' else False
     n_samples = args.n_samples
+    pre_process = True if args.pre_process == 'True' else False
+
     print('Running script with the following args:\n', args)
     print('\n')
 
@@ -234,6 +240,8 @@ else:
     species_id = '511145'
     output_dir = os.path.join('benchmark/cog_predictions', model_name)
     use_foi = False
+    pre_process = False
+    n_samples = 1
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(output_dir)
@@ -295,7 +303,7 @@ for (species, species_name) in species_dict.items():
     
         t1 = time.time()
         output = run_pipeline(x=x,cogs=use_cogs,
-                            params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_samples)
+                            params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_samples, scale=pre_process)
         t2 = time.time()
         print("Finished training in {}".format(t2-t1))
 
@@ -313,11 +321,38 @@ for (species, species_name) in species_dict.items():
         classifiers = output['classifier']
 
         # Remove COG labels from the data 
-        # x.drop(columns=['labels', 'cogs'], inplace=True)
-        x = a
-        
-        x.drop(columns=['labels'], inplace=True)
         v.drop(columns=['labels', 'cogs'], inplace=True)
+        # x.drop(columns=['labels', 'cogs'], inplace=True)
+
+        x = a
+        x.drop(columns=['labels'], inplace=True)
+        
+        # Scaler
+        mms = MinMaxScaler()
+        
+        # Indexes
+        xind = x.index
+        xcol = x.columns
+        
+        # Columns
+        vind = v.index
+        vcol= v.columns
+
+        # Transorm
+        x = pd.DataFrame(mms.fit_transform(x))
+        v = pd.DataFrame(mms.fit_transform(v))
+
+        # Reindex
+        x = mms.fit_transform(x)
+        x = pd.DataFrame(x)
+        x.columns = xcol
+        x.index =  xind
+
+        v = mms.fit_transform(v)
+        v = pd.DataFrame(v)
+        v.columns = vcol
+        v.index =  vind
+        
 
         # Get ensemble probabilities
         ensemble_probas_x = mean_probas(x, classifiers)

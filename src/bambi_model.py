@@ -18,7 +18,71 @@ import bambi as bmb
 import argparse
 import subprocess
 import time
+from sklearn.decomposition import TruncatedSVD
 
+def get_formula(feature_names):
+    template = ['{}'] * (len(feature_names))
+    template = " + ".join(template)
+    template = template.format(*list(feature_names))
+    f = 'y ~ ' +  template 
+    return f
+
+def mean_probas(x, models, classifiers):
+    mp = np.zeros(np.shape(x)[0])
+
+    for i in range(len(models)):
+        idata = models[i].predict(classifiers[i], data=x, inplace=False)
+        mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
+    
+    # Get the man proabilities
+    ensemble_probas = mp / len(models)
+    # This is a hack to guarentee that the probas work with the generate_output() script
+    ensemble_probas = [(x,x) for x in ensemble_probas]
+    return ensemble_probas
+
+def select_pcs(x, n_pcs=None, use_cogs=True, svd=None):
+    """Selects the appropriate amount of principle components based on variance explained       
+
+    :param x: Design matrix including labels and COGs
+    :type x: pandas dataframe
+    """
+    print('Transformatin data with SVD')
+    # Don't take eigen decompositon for labels or COGs
+    y = x['labels'].values
+    if use_cogs:
+        cogs = x['cogs'].values
+        x = x.drop(columns=['cogs'], inplace=False)
+    x = x.drop(columns=['labels'], inplace=False)
+
+    # Intantiate svd and compute PCs of x
+    n_rows, n_cols = np.shape(x)
+    n_comp = n_cols-1
+
+    if svd == None:
+        svd = TruncatedSVD(n_components=n_comp, random_state=42)
+        x_pc = pd.DataFrame(svd.fit_transform(x))
+    else:
+        x_pc = pd.DataFrame(svd.transform(x))
+    # Set the index
+    x_pc.index = x.index
+
+    if n_pcs == None:
+        # Get vairance explained
+        ev = np.array(svd.explained_variance_ratio_)
+        ev_cumsum = np.cumsum(ev)
+        pcs = np.array([x for x in range(1, n_comp + 1)])
+        best_pcs = pcs[ev_cumsum <= 0.95]
+        n_comp = best_pcs[-1]
+    else:
+        n_comp = n_pcs
+    # Subset the dataframe
+    x_pc = x_pc.iloc[:, :n_comp]
+    x_pc['labels'] = y
+
+    if use_cogs:
+        x_pc['cogs'] = cogs
+
+    return x_pc, n_pcs, svd
 
 
 
@@ -113,24 +177,25 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         
         # Add normally distributed noise to following features
         if noise:
-            perturb = [
-                'neighborhood_transferred',
-                'experiments_transferred',
-                'textmining',
-                'textmining_transferred',
-                'experiments',
-                'experiments_transferred',
-                'coexpression_transferred']
+            # perturb = [
+            #     'neighborhood_transferred',
+            #     'experiments_transferred',
+            #     'textmining',
+            #     'textmining_transferred',
+            #     'experiments',
+            #     'experiments_transferred',
+            #     'coexpression_transferred']
 
+            dont_perturb = ['labels', 'cogs']
             # Define guassian noise argumnets
             mu = 0
-            sigma = 0.005
+            sigma = 0.05
 
             x_train = x_train.apply(lambda x: inject_noise(
-                x, mu=mu, sigma=sigma) if x.name in perturb else x)
+                x, mu=mu, sigma=sigma) if x.name in dont_perturb else x)
 
             x_test = x_test.apply(lambda x: inject_noise(
-                x, mu=mu, sigma=sigma) if x.name in perturb else x)
+                x, mu=mu, sigma=sigma) if x.name in dont_perturb else x)
         
 
         # Run probabilistic LR bambi model
@@ -138,6 +203,7 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         
         # Get the function formula
         f = get_formula(x_train.columns[:-1])
+        print(f)
 
         model = bmb.Model(f, x_train, family=params['family'])
         clf = model.fit(draws=params['draws'], tune=params['tune'], chains=params['chains'])
@@ -158,26 +224,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         'test_splits': test_splits}
 
     return output_dict
-
-def get_formula(feature_names):
-    template = ['{}'] * (len(feature_names))
-    template = " + ".join(template)
-    template = template.format(*list(feature_names))
-    f = 'y ~ ' +  template 
-    return f
-
-def mean_probas(x, model, classifiers):
-    mp =np.zeros(np.shape(x)[0])
-
-    for i in range(len(models)):
-        idata = model[i].predict(classifiers[i], data=x, inplace=False)
-        mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
-    
-    # Get the man proabilities
-    ensemble_probas = mp / len(models)
-    # This is a hack to guarentee that the probas work with the generate_output() script
-    ensemble_probas = [(x,x) for x in ensemble_probas]
-    return ensemble_probas
 
 ###############################################################################################
 # START SCRIPT
@@ -217,7 +263,7 @@ if USE_ARGPASE:
     parser.add_argument('-foi', '--use_foi', type=str, metavar='',
                         required=True, default='False', help='make dot-plot on feature of interest')
     
-    parser.add_argument('-ns', '--n_samples', type=int, metavar='',
+    parser.add_argument('-ns', '--n_runs', type=int, metavar='',
                         required=True, default=3, help='number of randomised samplings')
     
     parser.add_argument('-nc', '--n_chains', type=int, metavar='',
@@ -231,6 +277,9 @@ if USE_ARGPASE:
     
     parser.add_argument('-fam', '--family', type=str, metavar='',
                     required=True, default='bernoulli', help='prior family to use')
+    
+    parser.add_argument('-pp', '--pre_process', type=str, metavar='',
+                    required=True, default='False', help='to pre-process train and test splits')
     
     
 
@@ -246,11 +295,12 @@ if USE_ARGPASE:
     species_id = args.species_id
     output_dir = os.path.join(args.output_dir, model_name)
     use_foi = True if args.use_foi == 'True' else False
-    n_samples = args.n_samples
+    n_runs = args.n_runs
     n_chains= args.n_chains
     n_draws= args.n_draws
     n_tune= args.n_tune
     family = args.family
+    pre_process = True if args.pre_process == 'True' else False
     print('Running script with the following args:\n', args)
     print('\n')
 
@@ -265,11 +315,13 @@ else:
     species_id = '511145'
     output_dir = os.path.join('benchmark/cog_predictions', model_name)
     use_foi = False
-    n_samples = 1
+    n_runs = 1
     n_chains= 4
     n_draws= 100
     n_tune= 300
     family = 'bernoulli'
+    pre_process = False
+
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(output_dir)
@@ -322,10 +374,17 @@ for (species, species_name) in species_dict.items():
         x = copy.deepcopy(train_data)
         a = copy.deepcopy(all_data)
         v = copy.deepcopy(valid_data)
-    
+
+        # Transform into PCs
+        n_pcs = 10
+        x, _, svd = select_pcs(x, n_pcs=n_pcs)
+        a, _, _ = select_pcs(a, n_pcs=n_pcs, use_cogs=False, svd=svd)
+        v, _, _ = select_pcs(v, n_pcs=n_pcs, svd=svd)
+
+
         t1 = time.time()
         output = run_pipeline(x=x,cogs=use_cogs,
-                            params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_samples)
+                            params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_runs)
         t2 = time.time()
         print("Finished training in {}".format(t2-t1))
 
@@ -336,8 +395,8 @@ for (species, species_name) in species_dict.items():
         # Make predictions
         ###############################################################################################
         
-
-
+        t1 = time.time()
+        print("Makgin inference")
         # Grab classifier(s)
         classifiers = output['classifiers']
         models = output['models']
@@ -345,13 +404,12 @@ for (species, species_name) in species_dict.items():
         # Remove COG labels from the data 
         # x.drop(columns=['labels', 'cogs'], inplace=True)
         x = a
-        
         x.drop(columns=['labels'], inplace=True)
         v.drop(columns=['labels', 'cogs'], inplace=True)
 
         # Get ensemble probabilities
-        ensemble_probas_x = mean_probas(x, model=models, classifiers=classifiers)
-        ensemble_probas_v = mean_probas(v, model=models, classifiers=classifiers)
+        ensemble_probas_x = mean_probas(x, models=models, classifiers=classifiers)
+        ensemble_probas_v = mean_probas(v, models=models, classifiers=classifiers)
         
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
@@ -373,6 +431,9 @@ for (species, species_name) in species_dict.items():
         data_intersections = {
         'train_data': filtered_string_score_x,
         'hold_out_data': filtered_string_score_v}
+
+        t2 = time.time()
+        print("Finished predictions in {}".format(t2-t1))
 
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
             

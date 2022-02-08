@@ -318,7 +318,7 @@ def model_splits(x, y, test_ratio):
     return x_train, x_test, y_train, y_test
 
 
-def scale_features(dtrain, dtest):
+def scale_features(dtrain, dtest, method='minmax'):
     """Scale the datasets between 0-1
 
     :param dtrain: train x-data
@@ -328,10 +328,15 @@ def scale_features(dtrain, dtest):
     :return: scaled dtrain and dtest datasets
     :rtype: tuple 2x pandas.core.DataFrames, sklearn Scaler() object
     """
-    mms = MinMaxScaler()
-    x_train_sc = pd.DataFrame(mms.fit_transform(dtrain))
-    x_test_sc = pd.DataFrame(mms.transform(dtest))
-    return x_train_sc, x_test_sc, mms
+
+    if method ==' minmax':
+        scaler = MinMaxScaler()
+    elif method =='standard':
+        scaler = StandardScaler()
+
+    x_train_sc = pd.DataFrame(scaler.fit_transform(dtrain))
+    x_test_sc = pd.DataFrame(scaler.transform(dtest))
+    return x_train_sc, x_test_sc, scaler
 
 
 # Change name to build_xgb_model()
