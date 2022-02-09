@@ -28,15 +28,10 @@ def get_formula(feature_names):
     f = 'y ~ ' +  template 
     return f
 
-def mean_probas(x, models, classifiers, transformers=None):
+def mean_probas(x, models, classifiers):
     mp = np.zeros(np.shape(x)[0])
 
     for i in range(len(models)):
-        if transformers != None:
-            rows = x.index
-            x = pd.DataFrame(transformers[i].transform(x))
-            x.index = rows
-
         idata = models[i].predict(classifiers[i], data=x, inplace=False)
         mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
     
@@ -133,7 +128,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
     models = []
     classifiers = []
     predictions = []
-    transformers = []
     
 
     # Pre-allocate the datasets
@@ -157,11 +151,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
             x_train, x_test, y_train, y_test = model_splits(
                 x, x.labels, test_ratio=test_ratio)   
 
-        # Compute PC transforms here
-        n_pcs = 10
-        x_train, _, svd = select_pcs(x_train, n_pcs)
-        x_test, _, svd = select_pcs(x_test, n_pcs, svd=svd)
-
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
         x_test.drop(columns=['labels', 'cogs'], inplace=True)
@@ -169,7 +158,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         # Store all of the unique splits
         train_splits.append([x_train, y_train])
         test_splits.append([x_test, y_test])
-        transformers.append(svd)
 
     # CML message
     print("Complete with no errors")
@@ -221,9 +209,8 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         'models': models,
         'classifiers': classifiers,
         'train_splits': train_splits,
-        'test_splits': test_splits,
-        'transformers': transformers}
-
+        'test_splits': test_splits
+        }
     return output_dict
 
 ###############################################################################################
