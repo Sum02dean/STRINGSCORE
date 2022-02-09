@@ -1,6 +1,6 @@
 #!/bin/bash
 /mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python bambi_model.py \
---output_dir models/pca_with_transform/ \
+--output_dir models/pca_with_transform_2/ \
 --model_name bambi \
 --species_id '4932' \
 --cogs True \

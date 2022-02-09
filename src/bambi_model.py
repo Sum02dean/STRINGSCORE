@@ -1,5 +1,6 @@
 import sys
 import os
+from matplotlib import transforms
 import pandas as pd
 src_path = os.getcwd().replace('/ideas', '')
 sys.path.append(src_path)
@@ -27,10 +28,15 @@ def get_formula(feature_names):
     f = 'y ~ ' +  template 
     return f
 
-def mean_probas(x, models, classifiers):
+def mean_probas(x, models, classifiers, transformers=None):
     mp = np.zeros(np.shape(x)[0])
 
     for i in range(len(models)):
+        if transformers != None:
+            rows = x.index
+            x = pd.DataFrame(transformers[i].transform(x))
+            x.index = rows
+
         idata = models[i].predict(classifiers[i], data=x, inplace=False)
         mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
     
@@ -49,13 +55,14 @@ def select_pcs(x, n_pcs=None, use_cogs=True, svd=None):
     print('Transformatin data with SVD')
     # Don't take eigen decompositon for labels or COGs
     y = x['labels'].values
+    
     if use_cogs:
         cogs = x['cogs'].values
         x = x.drop(columns=['cogs'], inplace=False)
     x = x.drop(columns=['labels'], inplace=False)
 
     # Intantiate svd and compute PCs of x
-    n_rows, n_cols = np.shape(x)
+    _, n_cols = np.shape(x)
     n_comp = n_cols-1
 
     if svd == None:
@@ -63,6 +70,7 @@ def select_pcs(x, n_pcs=None, use_cogs=True, svd=None):
         x_pc = pd.DataFrame(svd.fit_transform(x))
     else:
         x_pc = pd.DataFrame(svd.transform(x))
+
     # Set the index
     x_pc.index = x.index
 
@@ -83,8 +91,6 @@ def select_pcs(x, n_pcs=None, use_cogs=True, svd=None):
         x_pc['cogs'] = cogs
 
     return x_pc, n_pcs, svd
-
-
 
 def run_pipeline(x, params, scale=False, weights=None, cogs=True, 
                 train_ratio=0.8, noise=False, n_runs=3, run_cv=False, verbose_eval=True):
@@ -122,13 +128,12 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
 
     print("Beginning pipeline...")
     test_ratio = 1-train_ratio
-
-    # Split the data
     train_splits  = []
     test_splits = []
     models = []
     classifiers = []
     predictions = []
+    transformers = []
     
 
     # Pre-allocate the datasets
@@ -152,6 +157,11 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
             x_train, x_test, y_train, y_test = model_splits(
                 x, x.labels, test_ratio=test_ratio)   
 
+        # Compute PC transforms here
+        n_pcs = 10
+        x_train, _, svd = select_pcs(x_train, n_pcs)
+        x_test, _, svd = select_pcs(x_test, n_pcs, svd=svd)
+
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
         x_test.drop(columns=['labels', 'cogs'], inplace=True)
@@ -159,6 +169,7 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         # Store all of the unique splits
         train_splits.append([x_train, y_train])
         test_splits.append([x_test, y_test])
+        transformers.append(svd)
 
     # CML message
     print("Complete with no errors")
@@ -177,25 +188,16 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         
         # Add normally distributed noise to following features
         if noise:
-            # perturb = [
-            #     'neighborhood_transferred',
-            #     'experiments_transferred',
-            #     'textmining',
-            #     'textmining_transferred',
-            #     'experiments',
-            #     'experiments_transferred',
-            #     'coexpression_transferred']
-
             dont_perturb = ['labels', 'cogs']
             # Define guassian noise argumnets
             mu = 0
             sigma = 0.05
 
             x_train = x_train.apply(lambda x: inject_noise(
-                x, mu=mu, sigma=sigma) if x.name in dont_perturb else x)
+                x, mu=mu, sigma=sigma) if x.name not in dont_perturb else x)
 
             x_test = x_test.apply(lambda x: inject_noise(
-                x, mu=mu, sigma=sigma) if x.name in dont_perturb else x)
+                x, mu=mu, sigma=sigma) if x.name not in dont_perturb else x)
         
 
         # Run probabilistic LR bambi model
@@ -203,8 +205,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         
         # Get the function formula
         f = get_formula(x_train.columns[:-1])
-        print(f)
-
         model = bmb.Model(f, x_train, family=params['family'])
         clf = model.fit(draws=params['draws'], tune=params['tune'], chains=params['chains'])
         models.append(model)
@@ -221,15 +221,14 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         'models': models,
         'classifiers': classifiers,
         'train_splits': train_splits,
-        'test_splits': test_splits}
+        'test_splits': test_splits,
+        'transformers': transformers}
 
     return output_dict
 
 ###############################################################################################
 # START SCRIPT
 ###############################################################################################
-
-
 
 # Extract input variables from Argparse
 USE_ARGPASE = True
@@ -346,7 +345,6 @@ params = {
     'draws': n_draws, 
     'tune': n_tune}
 
-
 for (species, species_name) in species_dict.items():
     if species in species_id:
 
@@ -375,13 +373,6 @@ for (species, species_name) in species_dict.items():
         a = copy.deepcopy(all_data)
         v = copy.deepcopy(valid_data)
 
-        # Transform into PCs
-        n_pcs = 10
-        x, _, svd = select_pcs(x, n_pcs=n_pcs)
-        a, _, _ = select_pcs(a, n_pcs=n_pcs, use_cogs=False, svd=svd)
-        v, _, _ = select_pcs(v, n_pcs=n_pcs, svd=svd)
-
-
         t1 = time.time()
         output = run_pipeline(x=x,cogs=use_cogs,
                             params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_runs)
@@ -389,17 +380,17 @@ for (species, species_name) in species_dict.items():
         print("Finished training in {}".format(t2-t1))
 
 
-
-
        ###############################################################################################
         # Make predictions
         ###############################################################################################
         
         t1 = time.time()
-        print("Makgin inference")
+        print("Making inference")
+
         # Grab classifier(s)
         classifiers = output['classifiers']
         models = output['models']
+        transformers = output['transformers']
 
         # Remove COG labels from the data 
         # x.drop(columns=['labels', 'cogs'], inplace=True)
@@ -408,8 +399,8 @@ for (species, species_name) in species_dict.items():
         v.drop(columns=['labels', 'cogs'], inplace=True)
 
         # Get ensemble probabilities
-        ensemble_probas_x = mean_probas(x, models=models, classifiers=classifiers)
-        ensemble_probas_v = mean_probas(v, models=models, classifiers=classifiers)
+        ensemble_probas_x = mean_probas(x, models=models, classifiers=classifiers, transformers=transformers)
+        ensemble_probas_v = mean_probas(v, models=models, classifiers=classifiers, transformers=transformers)
         
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
