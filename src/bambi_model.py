@@ -153,8 +153,8 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
                 x, x.labels, test_ratio=test_ratio)   
 
         # Drop the labels from x-train and x-test
-        x_train.drop(columns=['labels', 'cogs'], inplace=True)
-        x_test.drop(columns=['labels', 'cogs'], inplace=True)
+        x_train.drop(columns=['labels', 'cogs', 'neighborhood'], inplace=True)
+        x_test.drop(columns=['labels', 'cogs', 'neighborhood'], inplace=True)
 
         # Store all of the unique splits
         train_splits.append([x_train, y_train])
@@ -195,7 +195,7 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         # Get the function formula
         f = get_formula(x_train.columns[:-1])
         model = bmb.Model(f, x_train, family=params['family'])
-        clf = model.fit(draws=params['draws'], tune=params['tune'], chains=params['chains'])
+        clf = model.fit(draws=params['draws'], tune=params['tune'], chains=params['chains'], init='adapt_diag')
         models.append(model)
         classifiers.append(clf)
         
@@ -378,17 +378,16 @@ for (species, species_name) in species_dict.items():
         # Grab classifier(s)
         classifiers = output['classifiers']
         models = output['models']
-        transformers = output['transformers']
 
         # Remove COG labels from the data 
         # x.drop(columns=['labels', 'cogs'], inplace=True)
         x = a
-        x.drop(columns=['labels'], inplace=True)
-        v.drop(columns=['labels', 'cogs'], inplace=True)
+        x.drop(columns=['labels', 'neighborhood'], inplace=True)
+        v.drop(columns=['labels', 'cogs', 'neighborhood'], inplace=True)
 
         # Get ensemble probabilities
-        ensemble_probas_x = mean_probas(x, models=models, classifiers=classifiers, transformers=transformers)
-        ensemble_probas_v = mean_probas(v, models=models, classifiers=classifiers, transformers=transformers)
+        ensemble_probas_x = mean_probas(x, models=models, classifiers=classifiers)
+        ensemble_probas_v = mean_probas(v, models=models, classifiers=classifiers)
         
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)

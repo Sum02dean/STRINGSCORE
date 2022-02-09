@@ -1,6 +1,6 @@
 #!/bin/bash
 /mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python bambi_model.py \
---output_dir models/pca_with_transform_2/ \
+--output_dir models/drop_zero_col/multi_run/ \
 --model_name bambi \
 --species_id '4932' \
 --cogs True \
@@ -10,7 +10,7 @@
 --drop_homology True \
 --use_foi False \
 --pre_process False \
---n_runs 1 \
+--n_runs 3 \
 --n_chains 2 \
 --n_draws  1000 \
 --n_tune 3000 \

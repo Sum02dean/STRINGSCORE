@@ -327,32 +327,6 @@ for (species, species_name) in species_dict.items():
         x = a
         x.drop(columns=['labels'], inplace=True)
         
-        # Scaler
-        mms = MinMaxScaler()
-        
-        # Indexes
-        xind = x.index
-        xcol = x.columns
-        
-        # Columns
-        vind = v.index
-        vcol= v.columns
-
-        # Transorm
-        x = pd.DataFrame(mms.fit_transform(x))
-        v = pd.DataFrame(mms.fit_transform(v))
-
-        # Reindex
-        x = mms.fit_transform(x)
-        x = pd.DataFrame(x)
-        x.columns = xcol
-        x.index =  xind
-
-        v = mms.fit_transform(v)
-        v = pd.DataFrame(v)
-        v.columns = vcol
-        v.index =  vind
-        
 
         # Get ensemble probabilities
         ensemble_probas_x = mean_probas(x, classifiers)
