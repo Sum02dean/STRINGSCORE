@@ -21,7 +21,7 @@ import subprocess
 import time
 from sklearn.decomposition import TruncatedSVD
 
-# Useful functions
+# Useful functions.
 def get_formula(feature_names):
     template = ['{}'] * (len(feature_names))
     template = " + ".join(template)
