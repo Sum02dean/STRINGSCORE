@@ -173,7 +173,10 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         
         # Scale the data if necessary
         if scale:
-            x_train, x_test, mms = scale_features(x_train, x_test)
+            col_names = x_train.columns
+            x_train, x_test, mms = scale_features(x_train, x_test, method='standard')
+            x_train.columns = col_names
+            x_test.columns = col_names
         
         # Add normally distributed noise to following features
         if noise:
