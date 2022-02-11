@@ -105,10 +105,7 @@ def train_network(params, x_train, y_train):
     if i % mini_epochs == mini_epochs-1:    
         print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / mini_epochs:.3f}')
         running_loss = 0.0
-print("Finished training")
-
-
-
+    print("Finished training")
 
 def run_pipeline(x, params, scale=False, weights=None, 
                 cogs=True, train_ratio=0.8, noise=False, n_runs=3):
@@ -191,7 +188,7 @@ def run_pipeline(x, params, scale=False, weights=None,
 
     # Train across n-unique subsets of the data
     for i in range(len(train_splits)):
-        print("Computing predictions for sampling run {}".format(i+1))
+        print("Training on sampling run {}".format(i+1))
         x_train, y_train = train_splits[i]
         x_test, y_test = test_splits[i]
         
