@@ -74,9 +74,10 @@ def train_network(params, x_train, y_train):
 
     # Train loop
     for epoch in range(epochs):
+
         net.train()
         running_loss = 0.0
-
+        
         for i, data, in enumerate(train_loader, 0):
             # Zero the gradients
             optimizer.zero_grad()
@@ -87,7 +88,7 @@ def train_network(params, x_train, y_train):
             # Compute the neural network outputs
             outputs = net(inputs)
 
-            # Compute the loss between inputs and outputs ans tep the optimizer
+            # Compute the loss between inputs and outputs and step the optimizer
             loss = criterion(outputs, labels)
             
             # print(outputs[0], labels[0])
@@ -96,11 +97,12 @@ def train_network(params, x_train, y_train):
             # Step optimizer
             optimizer.step()
 
-            # Print the statisticcs
+            # Print the statistics
             running_loss += loss.item()
             mini_epochs = 1000
     
-    if i % mini_epochs == mini_epochs-1:    # print every n mini-batches
+    # print every n mini-batches
+    if i % mini_epochs == mini_epochs-1:    
         print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / mini_epochs:.3f}')
         running_loss = 0.0
 print("Finished training")
