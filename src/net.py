@@ -68,7 +68,6 @@ def train_network(params, x_train, y_train):
     labels_tensor = torch.unsqueeze(labels_tensor, 1)
 
     # Build data-loader
-    to_shuffle = True
     train_tensor = data_utils.TensorDataset(features_tensor, labels_tensor)
     train_loader = data_utils.DataLoader(train_tensor, batch_size=batch_size, shuffle=to_shuffle)
     
