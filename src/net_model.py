@@ -26,31 +26,45 @@ class NN(nn.Module):
         :type output_size: int
         """
         super(NN, self).__init__()
+
+        # Inits
         self.hidden_size = hidden_size
         self.output_size = output_size
-        # Input layer
+        
+        # Layers
         self.layer_1 = nn.Linear(input_size, self.hidden_size)
-        # Hidden layer
         self.layer_2 = nn.Linear(self.hidden_size, self.hidden_size)
-        # Output layer
         self.out = nn.Linear(self.hidden_size, self.output_size)
+        
         # Sigmoid to squish data to probability distribution
         self.sig = nn.Sigmoid()
         
     def forward(self, x):
-        """Forward method used for forward pass during training.
+        """Forward method used for forward pass during network training.
 
         :param x: data (features without outcome variabel)
-        :type x: nd-array or pandas.core.DataFrame
+        :type x: nd-array
         :return: probability of class 1 scaled between 0-1
         :rtype: tensor.float32
         """
+
+        # Hypers
         grad_val = 0.01
-        x = nn.LeakyReLU(grad_val)(self.layer_1(x))
-        x = nn.LeakyReLU(grad_val)(self.layer_2(x))
+        dr = 0.2
+
+        # Input layer
+        x = self.layer_1(x)
+        x = nn.Dropout(dr)(x)
+        x = nn.LeakyReLU(grad_val)(x)
+
+        # Hidden layer 
+        x = self.layer_2(x)
+        x = nn.Dropout(dr)(x)
+        x = nn.LeakyReLU(grad_val)(x)
+
+        # Output layer
         output = self.out(x)
         return self.sig(output)
-
 
 def train_network(params, x_train, y_train):
     
@@ -63,35 +77,32 @@ def train_network(params, x_train, y_train):
     to_shuffle = params['to_shuffle']
     
     # Generate data tensors
-    features_tensor = torch.tensor(x_train, dtype=torch.float32)
-    labels_tensor = torch.tensor(y_train, dtype=torch.float32)
+    features_tensor = torch.tensor(x_train.values, dtype=torch.float32)
+    labels_tensor = torch.tensor(y_train.values, dtype=torch.float32)
     labels_tensor = torch.unsqueeze(labels_tensor, 1)
 
     # Build data-loader
-    train_tensor = data_utils.TensorDataset(features_tensor, labels_tensor)
-    train_loader = data_utils.DataLoader(train_tensor, batch_size=batch_size, shuffle=to_shuffle)
-    
+    train_dataset = data_utils.TensorDataset(features_tensor, labels_tensor)
+    train_loader = data_utils.DataLoader(train_dataset, batch_size=batch_size, shuffle=to_shuffle)
 
     # Train loop
     for epoch in range(epochs):
 
         net.train()
         running_loss = 0.0
-        
         for i, data, in enumerate(train_loader, 0):
+
             # Zero the gradients
             optimizer.zero_grad()
 
             # Extract the inputs
             inputs, labels = data
 
-            # Compute the neural network outputs
+            # Compute the network outputs
             outputs = net(inputs)
 
-            # Compute the loss between inputs and outputs and step the optimizer
+            # Compute the loss between inputs and outputs
             loss = criterion(outputs, labels)
-            
-            # print(outputs[0], labels[0])
             loss.backward()
 
             # Step optimizer
@@ -106,6 +117,43 @@ def train_network(params, x_train, y_train):
         print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / mini_epochs:.3f}')
         running_loss = 0.0
     print("Finished training")
+    return net
+
+def predict(net, x_test, y_test):
+
+    # Generate tensors
+    features_tensor = torch.tensor(x_test.values, dtype=torch.float32)
+    labels_tensor = torch.tensor(y_test.values, dtype=torch.float32)
+    labels_tensor = torch.unsqueeze(labels_tensor, 1)
+    
+
+    # Create the data loader
+    to_shuffle = True
+    test_tensor = data_utils.TensorDataset(features_tensor, labels_tensor)
+    test_loader = data_utils.DataLoader(test_tensor, batch_size=batch_size, shuffle=to_shuffle)
+
+
+    # Make predicitions
+    y = []
+    probas = []
+
+    # since we're not training, we don't need to calculate the gradients for our outputs
+    with torch.no_grad():
+        for i, data in enumerate(test_loader, 0):
+            inputs, labels = data
+            # calculate outputs by running images through the network
+            outputs = net(inputs).numpy().flatten().tolist()
+            probas += outputs
+            y += labels.numpy().flatten().tolist()
+    
+    # Format the predictions
+    y_prime = [1 if (x>0.5) else 0 for x in probas]
+    y = [int(x) for x in y]
+    predictions = list(zip(y, y_prime))
+    acc = np.sum([1 if (x[0]==x[1])  else 0 for x in predictions]) / len(y)
+    print('The performance for this model is: {:.2f}%'.format(acc * 100))
+    
+    return net, probas, predictions, acc, y, y_prime
 
 def run_pipeline(x, params, scale=False, weights=None, 
                 cogs=True, train_ratio=0.8, noise=False, n_runs=3):
@@ -171,7 +219,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         else:
             # Don't stratify on orthologs and sample uniformly
             x_train, x_test, y_train, y_test = model_splits(
-                x, y, test_ratio=test_ratio)   
+                x, x.labels, test_ratio=test_ratio)   
 
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
@@ -200,7 +248,6 @@ def run_pipeline(x, params, scale=False, weights=None,
             x_test.columns = col_names
 
         if noise:
-
             # Add normally distributed noise to following features
             perturb = [
                 'neighborhood_transferred',
@@ -223,18 +270,21 @@ def run_pipeline(x, params, scale=False, weights=None,
         
 
         # Make a one time prediction for each of the splits
-        clf = build_model(params, class_ratio=weights)
-        clf = fit(clf, x_train, y_train, x_test, y_test)
-        clf, preds, probas, acc, _ = predict(clf, x_test, y_test)
-
+        input_size = params['input_size']
+        hidden_size = params['hidden_size']
+        output_size = params['output_size']
+        net = params['net']
+        
+        net = train_network(params=params, x_train=x_train, y_train=y_train)
+        print("Predicting on test data")
+        net, probas, preds, acc, y, y_hat = predict(net=net, x_test=x_test, y_test=y_test)
         # Collect the model specific data
-        models.append(clf)
-        predictions.append(preds)
+        models.append(net)
         probabilities.append(probas)
+        predictions.append(preds)
         accuracies.append(acc)
 
     output_dict = {
-            'predictions': predictions,
             'probabilities': probabilities,
             'classifier': models,
             'train_splits': train_splits,
@@ -243,21 +293,34 @@ def run_pipeline(x, params, scale=False, weights=None,
 
     return output_dict
 
-def mean_probas(x, clfs):
-    probabilities = 0
-    for clf in clfs:
-        probas = clf.predict_proba(x)
-        probabilities += probas
-    probas = probabilities/len(clfs)
-    return probas
+def mean_probas(x_test, y_test, models):
+
+        # Initialise final results (mean_probas)
+        n_rows = np.shape(y_test)[0]
+        n_cols = len(models)
+        mean_probas = np.zeros(shape=(n_rows, n_cols))
+        
+        # Loop over all models, make predictions across K model, compute average.
+        for i in range(len(models)):
+            _, probas, _, _, _, _ = predict(models[i], x_test, y_test)
+            mean_probas[:, i] = probas
+
+        # Returns the mean predictions for all K models
+        mean_probas = mean_probas.mean(axis=1)
+        mean_probas = [(x, x) for x in mean_probas]
+        return mean_probas
+
+
+
+
+
 
 ###############################################################################################
 # START SCRIPT
 ###############################################################################################
-
+   
 # Extract input variables from Argparse
 USE_ARGPASE = True
-
 if USE_ARGPASE:
     parser = argparse.ArgumentParser(description='bambi')
     parser.add_argument('-n', '--model_name', type=str, metavar='',
@@ -290,23 +353,11 @@ if USE_ARGPASE:
     parser.add_argument('-ns', '--n_runs', type=int, metavar='',
                         required=True, default=3, help='number of randomised samplings')
     
-    parser.add_argument('-nc', '--n_chains', type=int, metavar='',
-                        required=True, default=1000, help='number of chains')
-
-    parser.add_argument('-nd', '--n_draws', type=int, metavar='',
-                        required=True, default=100, help='number of draws per chain')
-    
-    parser.add_argument('-nt', '--n_tune', type=int, metavar='',
-                        required=True, default=100, help='number of iterations to tune in NUTS')
-    
-    parser.add_argument('-fam', '--family', type=str, metavar='',
-                    required=True, default='bernoulli', help='prior family to use')
     
     parser.add_argument('-pp', '--pre_process', type=str, metavar='',
                     required=True, default='False', help='to pre-process train and test splits')
     
     
-
     # Parse agrs
     FORMAT = True
     args = parser.parse_args()
@@ -320,10 +371,6 @@ if USE_ARGPASE:
     output_dir = os.path.join(args.output_dir, model_name)
     use_foi = True if args.use_foi == 'True' else False
     n_runs = args.n_runs
-    n_chains= args.n_chains
-    n_draws= args.n_draws
-    n_tune= args.n_tune
-    family = args.family
     pre_process = True if args.pre_process == 'True' else False
     print('Running script with the following args:\n', args)
     print('\n')
@@ -346,7 +393,6 @@ else:
     family = 'bernoulli'
     pre_process = False
 
-
 # Check whether the specified path exists or not
 isExist = os.path.exists(output_dir)
 if not isExist:
@@ -367,7 +413,7 @@ full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 to_shuffle = True
 batch_size = 50
 epochs = 100
-input_size = features.shape[1]
+input_size = 12 if drop_homology else 13
 hidden_size = 200
 output_size = 1
 learning_rate = 0.0002 # <-- best: 0.001
@@ -376,8 +422,13 @@ net = NN(input_size=input_size, hidden_size=hidden_size, output_size=output_size
 optimizer = optim.SGD(net.parameters(), momentum=0.9, lr=learning_rate)
 print('Network Architecture: \n',net)
 
+# Store parameters
 params = {
     'net': net,
+    'epochs':epochs,
+    'input_size':input_size,
+    'output_size':output_size,
+    'hidden_size':hidden_size,
     'criterion': criterion,
     'optimizer': optimizer, 
     'batch_size': batch_size, 
@@ -413,12 +464,83 @@ for (species, species_name) in species_dict.items():
 
         t1 = time.time()
         output = run_pipeline(x=x,cogs=use_cogs,
-                            params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_runs)
+                            params=params, weights=weights, noise=use_noise, n_runs=n_runs)
         t2 = time.time()
         print("Finished training in {}".format(t2-t1))
 
 
-       ###############################################################################################
+    ###############################################################################################
         # Make predictions
-        ###############################################################################################
+    ###############################################################################################
+
+        t1 = time.time()
+        # Remove reference to the original data 
+        x = copy.deepcopy(train_data)
+        a = copy.deepcopy(all_data)
+        v = copy.deepcopy(valid_data)
+        print("Making inference")
+
+        # Grab classifier(s)
+        classifiers = output['classifier']
+
+        # Remove COG labels from the data 
+        # x.drop(columns=['labels', 'cogs'], inplace=True)
+        x = a
+        x_labels = x['labels']
+        v_labels = v['labels']
+
+        x.drop(columns=['labels'], inplace=True)
+        v.drop(columns=['labels', 'cogs'], inplace=True)
+
+        # Get ensemble probabilities
+        ensemble_probas_x = mean_probas(x_test=x, y_test=x_labels, models=classifiers)
+        ensemble_probas_v = mean_probas(x_test=v, y_test=v_labels,  models=classifiers)
         
+        # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
+        combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
+        combined_scores = pd.read_csv(combined_score_file, header=None, sep='\t')
+
+
+        # Save data compatible for Damaians benchmark script (all data)
+        x_outs = save_outputs_benchmark(x=x, probas=ensemble_probas_x,  sid=species,
+                                        direc=output_dir, model_name=model_name + '.train_data')
+        
+        v_outs = save_outputs_benchmark(x=v, probas=ensemble_probas_v,  sid=species,
+                                        direc=output_dir, model_name=model_name + '.hold_out_data')
+
+
+        # Get the intersection benchmark plot 
+        filtered_string_score_x = get_interesction(target=x_outs, reference=combined_scores)
+        filtered_string_score_v = get_interesction(target=v_outs, reference=combined_scores)
+
+        data_intersections = {
+        'train_data': filtered_string_score_x,
+        'hold_out_data': filtered_string_score_v}
+
+        t2 = time.time()
+        print("Finished predictions in {}".format(t2-t1))
+
+        for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
+            
+            # Save data compatible for Damaians benchmark script (all data)
+            save_dir = os.path.join(
+                    output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
+
+            filtered_file.to_csv(
+                    save_dir, header=False, index=False, sep='\t')
+
+                                            
+            json_report = generate_quality_json(
+                    model_name=model_name, direct=output_dir, sid=species, alt=file_name)
+
+
+            # Call Damians benchmark script on all of train - test - valid
+            print("Computing summary statistics for {} data.".format(file_name))
+            command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+                ["{}/quality_full_{}.{}.{}.json".format(
+                    output_dir, model_name, file_name, species)]
+            out = subprocess.run(command)
+    
+
+    
+            

@@ -79,7 +79,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         else:
             # Don't stratify on orthologs and sample uniformly
             x_train, x_test, y_train, y_test = model_splits(
-                x, y, test_ratio=test_ratio)   
+                x, x.labels, test_ratio=test_ratio)   
 
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
