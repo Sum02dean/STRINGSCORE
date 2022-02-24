@@ -1,5 +1,15 @@
 import sys
 import os
+from string_utils import *
+import seaborn as sns
+import sklearn
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+
+from sklearn.preprocessing import StandardScaler    
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -12,59 +22,78 @@ import argparse
 import subprocess
 import json
 import copy
+from collections import Counter as C
 
 
-class NN(nn.Module):	
-    def __init__(self, input_size, hidden_size, output_size):
-        """Barebones fully connected neural network with a single hidden layer.
+class BinaryClassification(nn.Module):
+    def __init__(self, input_dim=11, hidden_dim=[11], output_dim=1):
+        """ A Neural Network which can be adaptively parameterised for tabulra data predictions.
 
-        :param input_size: Number of features
-        :type input_size: int
-        :param hidden_size: number of neurons in the hidden layers
-        :type hidden_size: int
-        :param output_size: Number of classes (1 for binary)
-        :type output_size: int
+        :param input_dim: the number of input units (features), defaults to 12
+        :type input_dim: int, optional.
+        
+        :param hidden_dim: each element value gives the number of neurons per layer,
+                           while the len(hidden_sim) signifies the number of layers, defaults to [64]
+        :type hidden_dim: list, optional.
+        
+        :param output_dim: the number of outputs expected (1 for binary classification), defaults to 1
+        :type output_dim: int, optional.
         """
-        super(NN, self).__init__()
-
-        # Inits
-        self.hidden_size = hidden_size
-        self.output_size = output_size
+        super(BinaryClassification, self).__init__()       
         
-        # Layers
-        self.layer_1 = nn.Linear(input_size, self.hidden_size)
-        self.layer_2 = nn.Linear(self.hidden_size, self.hidden_size)
-        self.out = nn.Linear(self.hidden_size, self.output_size)
-        
-        # Sigmoid to squish data to probability distribution
-        self.sig = nn.Sigmoid()
-        
-    def forward(self, x):
-        """Forward method used for forward pass during network training.
+        # Define field attributes
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.layers = nn.ModuleList()
 
-        :param x: data (features without outcome variabel)
-        :type x: nd-array
-        :return: probability of class 1 scaled between 0-1
-        :rtype: tensor.float32
-        """
 
-        # Hypers
-        grad_val = 0.01
-        dr = 0.2
+        # If we are only interested in a network with a single hidden layer
+        if len(self.hidden_dim) == 1:
+          self.hidden_dim = hidden_dim[0]
+          self.input_layer = nn.Linear(self.input_dim, self.hidden_dim)
+          self.relu_1 = nn.ReLU()
+          self.batch_norm_1 = nn.BatchNorm1d(self.hidden_dim)
+          self.hidden_layer = nn.Linear(self.hidden_dim, self.hidden_dim) 
+          self.relu_2 = nn.ReLU()
+          self.batch_norm_2 = nn.BatchNorm1d(self.hidden_dim)
+          self.output_layer = nn.Linear(self.hidden_dim, self.output_dim)
+          
+          # Chain all layers together (except output)
+          all_layers = [self.input_layer, self.relu_1, self.batch_norm_1,
+                        self.hidden_layer, self.relu_2, self.batch_norm_2]
+          self.layers += [x for x in all_layers]
+ 
+        elif len(self.hidden_dim) > 1:
+          self.chained_dims = pairwise([self.hidden_dim[0]] + self.hidden_dim)
+          self.input_layer = nn.Linear(self.input_dim, self.hidden_dim[0])
+          self.relu_1 = nn.ReLU()
+          self.batch_norm_1 = nn.BatchNorm1d(self.hidden_dim[0])
+          self.output_layer = nn.Linear(self.hidden_dim[-1], self.output_dim)
+          
+          # Chain all hidden_dims sequentially - add to ModuleList
+          self.layers.append(self.input_layer)
+          self.layers.append(self.relu_1)
+          self.layers.append(self.batch_norm_1)
 
-        # Input layer
-        x = self.layer_1(x)
-        x = nn.Dropout(dr)(x)
-        x = nn.LeakyReLU(grad_val)(x)
-
-        # Hidden layer 
-        x = self.layer_2(x)
-        x = nn.Dropout(dr)(x)
-        x = nn.LeakyReLU(grad_val)(x)
-
-        # Output layer
-        output = self.out(x)
-        return self.sig(output)
+          for _, (h_in, h_out) in enumerate(self.chained_dims):
+            hidden_layer = nn.Linear(h_in, h_out)
+            self.layers.append(hidden_layer)
+            self.layers.append(nn.ReLU())
+            self.layers.append(nn.BatchNorm1d(h_out))
+          
+        # Activation and relu layers
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(p=0.02)
+       
+    def forward(self, inputs):
+      x = inputs
+      for layer in self.layers:
+        x = layer(x)
+      
+    #   x = self.dropout(x)
+      x = self.output_layer(x)
+      return x
 
 def train_network(params, x_train, y_train):
     
@@ -73,87 +102,83 @@ def train_network(params, x_train, y_train):
     criterion = params['criterion']
     net = params['net']
     optimizer = params['optimizer']
-    batch_size = params['batch_size']
     to_shuffle = params['to_shuffle']
+
+    balance = False
+    if balance:
+        d_train = dict(C(y_train.values))
+        x_train['labels'] = y_train.values
+        x_train = x_train.groupby('labels').apply(lambda x: x.sample(n=d_train[1], replace=False)).reset_index(drop=True)
+        y_train = x_train['labels']
+        x_train.drop(columns='labels', inplace=True)
     
-    # Generate data tensors
-    features_tensor = torch.tensor(x_train.values, dtype=torch.float32)
-    labels_tensor = torch.tensor(y_train.values, dtype=torch.float32)
-    labels_tensor = torch.unsqueeze(labels_tensor, 1)
+    # Generate train tensors
+    y_tensor_train = torch.FloatTensor(y_train.values)
+    x_tensor_train = torch.FloatTensor(x_train.values)
 
-    # Build data-loader
-    train_dataset = data_utils.TensorDataset(features_tensor, labels_tensor)
-    train_loader = data_utils.DataLoader(train_dataset, batch_size=batch_size, shuffle=to_shuffle)
-
+    # Establish train data-loader
+    to_shuffle = True
+    train_tensor = data_utils.TensorDataset(x_tensor_train, y_tensor_train)
+    train_loader = data_utils.DataLoader(train_tensor, batch_size=len(y_train), shuffle=to_shuffle)
+    
     # Train loop
-    for epoch in range(epochs):
-
-        net.train()
-        running_loss = 0.0
-        for i, data, in enumerate(train_loader, 0):
-
-            # Zero the gradients
+    net.train()
+    for e in range(1, epochs+1):
+        epoch_loss = 0
+        epoch_acc = 0
+        for X_batch, y_batch in train_loader:
+            X_batch, y_batch = X_batch, y_batch
             optimizer.zero_grad()
-
-            # Extract the inputs
-            inputs, labels = data
-
-            # Compute the network outputs
-            outputs = net(inputs)
-
-            # Compute the loss between inputs and outputs
-            loss = criterion(outputs, labels)
+            
+            y_pred = net(X_batch)
+            
+            loss = criterion(y_pred, y_batch.unsqueeze(1))
+            acc = binary_acc(y_pred, y_batch.unsqueeze(1))
+            
             loss.backward()
-
-            # Step optimizer
             optimizer.step()
-
-            # Print the statistics
-            running_loss += loss.item()
-            mini_epochs = 1000
-    
-    # print every n mini-batches
-    if i % mini_epochs == mini_epochs-1:    
-        print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / mini_epochs:.3f}')
-        running_loss = 0.0
-    print("Finished training")
+            
+            epoch_loss += loss.item()
+            epoch_acc += acc.item()
+            
+        print(f'Epoch {e+0:03}: | Loss: {epoch_loss/len(train_loader):.5f} | Acc: {epoch_acc/len(train_loader):.3f}')
     return net
 
 def predict(net, x_test, y_test):
 
-    # Generate tensors
-    features_tensor = torch.tensor(x_test.values, dtype=torch.float32)
-    labels_tensor = torch.tensor(y_test.values, dtype=torch.float32)
-    labels_tensor = torch.unsqueeze(labels_tensor, 1)
-    
-
-    # Create the data loader
+    # Establish train data-loader
     to_shuffle = True
-    test_tensor = data_utils.TensorDataset(features_tensor, labels_tensor)
-    test_loader = data_utils.DataLoader(test_tensor, batch_size=batch_size, shuffle=to_shuffle)
+        # Generate train tensors
+    y_tensor_train = torch.FloatTensor(y_test.values)
+    x_tensor_train = torch.FloatTensor(x_test.values)
+        
+    # Create the data loader
+    to_shuffle = False
+    test_tensor = data_utils.TensorDataset(x_tensor_train, y_tensor_train)
+    test_loader = data_utils.DataLoader(test_tensor, batch_size=len(y_test), shuffle=to_shuffle)
 
 
     # Make predicitions
     y = []
-    probas = []
+    y_hat = []
+    y_probas = []
 
     # since we're not training, we don't need to calculate the gradients for our outputs
+    net.eval()
     with torch.no_grad():
         for i, data in enumerate(test_loader, 0):
             inputs, labels = data
             # calculate outputs by running images through the network
-            outputs = net(inputs).numpy().flatten().tolist()
-            probas += outputs
-            y += labels.numpy().flatten().tolist()
-    
-    # Format the predictions
-    y_prime = [1 if (x>0.5) else 0 for x in probas]
-    y = [int(x) for x in y]
-    predictions = list(zip(y, y_prime))
-    acc = np.sum([1 if (x[0]==x[1])  else 0 for x in predictions]) / len(y)
-    print('The performance for this model is: {:.2f}%'.format(acc * 100))
-    
-    return net, probas, predictions, acc, y, y_prime
+            logits = net(inputs)
+            probas = torch.sigmoid(logits)
+            outputs = torch.round(probas)
+            y_hat.append(outputs.numpy())
+            y.append(labels.numpy())
+            y_probas.append(probas.numpy())
+
+    y_hat = [a.squeeze().tolist() for a in y_hat][0]
+    y = [a.squeeze().tolist() for a in y][0]
+    return net, y, y_hat, y_probas
 
 def run_pipeline(x, params, scale=False, weights=None, 
                 cogs=True, train_ratio=0.8, noise=False, n_runs=3):
@@ -180,10 +205,6 @@ def run_pipeline(x, params, scale=False, weights=None,
 
     :param noise: if True, injects noise term to specified features, defaults to False
     :type noise: bool, optional
-
-    :param neg_ratio: the proportion of negative-positive samples, defaults to 1
-    :type neg_ratio: int, optional
-
     
     :return: Returns an output dict containing key information.
     :rtype: dict
@@ -273,16 +294,20 @@ def run_pipeline(x, params, scale=False, weights=None,
         input_size = params['input_size']
         hidden_size = params['hidden_size']
         output_size = params['output_size']
-        net = params['net']
-        
+    
+        criterion = nn.BCELoss(reduction='mean')
+        net = BinaryClassification(input_dim=input_size, hidden_dim=[hidden_size], output_dim=output_size)
+        criterion = nn.BCEWithLogitsLoss()
+        optimizer = optim.Adam(net.parameters(), lr=learning_rate)
+        print('Network Architecture: \n',net)
         net = train_network(params=params, x_train=x_train, y_train=y_train)
         print("Predicting on test data")
-        net, probas, preds, acc, y, y_hat = predict(net=net, x_test=x_test, y_test=y_test)
+        net, y, y_hat, y_probas = predict(net=net, x_test=x_test, y_test=y_test)
+        
         # Collect the model specific data
         models.append(net)
-        probabilities.append(probas)
-        predictions.append(preds)
-        accuracies.append(acc)
+        probabilities.append(y_probas)
+        predictions.append(y_hat)
 
     output_dict = {
             'probabilities': probabilities,
@@ -302,7 +327,7 @@ def mean_probas(x_test, y_test, models):
         
         # Loop over all models, make predictions across K model, compute average.
         for i in range(len(models)):
-            _, probas, _, _, _, _ = predict(models[i], x_test, y_test)
+            net, y, y_hat, probas = predict(models[i], x_test, y_test)
             mean_probas[:, i] = probas
 
         # Returns the mean predictions for all K models
@@ -310,10 +335,13 @@ def mean_probas(x_test, y_test, models):
         mean_probas = [(x, x) for x in mean_probas]
         return mean_probas
 
+def binary_acc(y_pred, y_test):
+    y_pred_tag = torch.round(torch.sigmoid(y_pred))
 
-
-
-
+    correct_results_sum = (y_pred_tag == y_test).sum().float()
+    acc = correct_results_sum/y_test.shape[0]
+    acc = torch.round(acc * 100)
+    return acc
 
 ###############################################################################################
 # START SCRIPT
@@ -379,168 +407,165 @@ else:
     # Define defaults without using Argparse
     model_name = 'nn_model_0'
     use_cogs = False
-    weights = 4
+    weights = 1
     use_noise = True
-    neg_ratio = 4
+    neg_ratio = 1
     drop_homology = True
     species_id = '511145'
     output_dir = os.path.join('benchmark/cog_predictions', model_name)
     use_foi = False
     n_runs = 1
-    n_chains= 4
-    n_draws= 100
-    n_tune= 300
-    family = 'bernoulli'
     pre_process = False
 
-# Check whether the specified path exists or not
-isExist = os.path.exists(output_dir)
-if not isExist:
-    # Create it
-    os.makedirs(output_dir)
-    print("{} directory created.".format(output_dir))
+# Just to hide ugly code
+HIDE = True
+if HIDE:
+    # Check whether the specified path exists or not
+    isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
+    if not isExist:
+        # Create it
+        os.makedirs(os.path.join(output_dir, 'ensemble'))
+        print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
 
-# Specify link paths
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
-full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
+    # Specify link paths
+    full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+    full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-# Map species ID to  name
-species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
-full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
+    # Map species ID to  name
+    species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
+    full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+    full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-# Define model parameters
-to_shuffle = True
-batch_size = 50
-epochs = 100
-input_size = 12 if drop_homology else 13
-hidden_size = 200
-output_size = 1
-learning_rate = 0.0002 # <-- best: 0.001
-criterion = nn.BCELoss(reduction='mean')
-net = NN(input_size=input_size, hidden_size=hidden_size, output_size=output_size)
-optimizer = optim.SGD(net.parameters(), momentum=0.9, lr=learning_rate)
-print('Network Architecture: \n',net)
+    # Define model parameters
+    to_shuffle = True
+    batch_size = 50
+    epochs = 100
+    input_size = 12 if drop_homology else 13
+    hidden_size = 200
+    output_size = 1
+    learning_rate = 0.001 # <-- best: 0.001
+    
 
-# Store parameters
-params = {
-    'net': net,
-    'epochs':epochs,
-    'input_size':input_size,
-    'output_size':output_size,
-    'hidden_size':hidden_size,
-    'criterion': criterion,
-    'optimizer': optimizer, 
-    'batch_size': batch_size, 
-    'to_shuffle': to_shuffle
-    }
+    # Store parameters
+    params = {
+        'epochs':epochs,
+        'input_size':input_size,
+        'output_size':output_size,
+        'hidden_size':hidden_size,
+        'to_shuffle': to_shuffle
+        }
 
-for (species, species_name) in species_dict.items():
-    if species in species_id:
+    for (species, species_name) in species_dict.items():
+        if species in species_id:
 
-        print("Computing for {}".format(species))
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-        kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
+            print("Computing for {}".format(species))
+            spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+            kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
-        # Load in pre-defined train and validate sets
-        train_path = "pre_processed_data/script_test/{}_train.csv".format(species_name)
-        valid_path = "pre_processed_data/script_test/{}_valid.csv".format(species_name)
-        all_path = 'pre_processed_data/script_test/{}_all.csv'.format(species_name)    
+            # Load in pre-defined train and validate sets
+            train_path = "pre_processed_data/scaled/{}_train.csv".format(species_name)
+            valid_path = "pre_processed_data/scaled/{}_valid.csv".format(species_name)
+            all_path = 'pre_processed_data/scaled/{}_all.csv'.format(species_name)    
 
-        
-        # Load train, test, valid data
-        train_data = pd.read_csv(train_path, header=0, low_memory=False, index_col=0)
-        valid_data = pd.read_csv(valid_path, header=0, low_memory=False, index_col=0)
-        all_data = pd.read_csv(all_path, header=0, low_memory=False, index_col=0)
-
-        # Load in all data even without KEGG memberships
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-        x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
-
-        # Remove regference to the original data 
-        x = copy.deepcopy(train_data)
-        a = copy.deepcopy(all_data)
-        v = copy.deepcopy(valid_data)
-
-        t1 = time.time()
-        output = run_pipeline(x=x,cogs=use_cogs,
-                            params=params, weights=weights, noise=use_noise, n_runs=n_runs)
-        t2 = time.time()
-        print("Finished training in {}".format(t2-t1))
-
-
-    ###############################################################################################
-        # Make predictions
-    ###############################################################################################
-
-        t1 = time.time()
-        # Remove reference to the original data 
-        x = copy.deepcopy(train_data)
-        a = copy.deepcopy(all_data)
-        v = copy.deepcopy(valid_data)
-        print("Making inference")
-
-        # Grab classifier(s)
-        classifiers = output['classifier']
-
-        # Remove COG labels from the data 
-        # x.drop(columns=['labels', 'cogs'], inplace=True)
-        x = a
-        x_labels = x['labels']
-        v_labels = v['labels']
-
-        x.drop(columns=['labels'], inplace=True)
-        v.drop(columns=['labels', 'cogs'], inplace=True)
-
-        # Get ensemble probabilities
-        ensemble_probas_x = mean_probas(x_test=x, y_test=x_labels, models=classifiers)
-        ensemble_probas_v = mean_probas(x_test=v, y_test=v_labels,  models=classifiers)
-        
-        # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-        combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
-        combined_scores = pd.read_csv(combined_score_file, header=None, sep='\t')
-
-
-        # Save data compatible for Damaians benchmark script (all data)
-        x_outs = save_outputs_benchmark(x=x, probas=ensemble_probas_x,  sid=species,
-                                        direc=output_dir, model_name=model_name + '.train_data')
-        
-        v_outs = save_outputs_benchmark(x=v, probas=ensemble_probas_v,  sid=species,
-                                        direc=output_dir, model_name=model_name + '.hold_out_data')
-
-
-        # Get the intersection benchmark plot 
-        filtered_string_score_x = get_interesction(target=x_outs, reference=combined_scores)
-        filtered_string_score_v = get_interesction(target=v_outs, reference=combined_scores)
-
-        data_intersections = {
-        'train_data': filtered_string_score_x,
-        'hold_out_data': filtered_string_score_v}
-
-        t2 = time.time()
-        print("Finished predictions in {}".format(t2-t1))
-
-        for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
             
+            # Load train, test, valid data
+            train_data = pd.read_csv(train_path, header=0, low_memory=False, index_col=0)
+            valid_data = pd.read_csv(valid_path, header=0, low_memory=False, index_col=0)
+            all_data = pd.read_csv(all_path, header=0, low_memory=False, index_col=0)
+
+            # Load in all data even without KEGG memberships
+            spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+            x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
+
+            # Remove regference to the original data 
+            x = copy.deepcopy(train_data)
+            a = copy.deepcopy(all_data)
+            v = copy.deepcopy(valid_data)
+
+            t1 = time.time()
+            output = run_pipeline(x=x,cogs=use_cogs,
+                                params=params, weights=weights, noise=use_noise, n_runs=n_runs)
+            t2 = time.time()
+            print("Finished training in {}".format(t2-t1))
+
+
+        ###############################################################################################
+            # Make predictions
+        ###############################################################################################
+
+            print("Making inference")
+            # Grab classifier(s)
+            classifiers = output['classifier'][-1]
+
+            # Remove COG labels from the data 
+            # x.drop(columns=['labels', 'cogs'], inplace=True)
+            x = a
+            x_labels = x['labels']
+            v_labels = v['labels']
+
+            x.drop(columns=['labels'], inplace=True)
+            v.drop(columns=['labels', 'cogs'], inplace=True)
+
+            # Get probabilities
+            _, xy, xy_hat, x_probas = predict(net=classifiers, x_test=x, y_test=x_labels)
+            x_probas = [float(x) for x in x_probas[0]]
+            x_probas = [[x,x] for x in x_probas]
+
+            _, vy, vy_hat, v_probas = predict(net=classifiers, x_test=v, y_test=v_labels)
+            v_probas = [float(x) for x in v_probas[0]]
+            v_probas = [[x,x] for x in v_probas]
+
+            
+            # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
+            combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
+            combined_scores = pd.read_csv(combined_score_file, header=None, sep='\t')
+
+
             # Save data compatible for Damaians benchmark script (all data)
-            save_dir = os.path.join(
-                    output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
-
-            filtered_file.to_csv(
-                    save_dir, header=False, index=False, sep='\t')
-
-                                            
-            json_report = generate_quality_json(
-                    model_name=model_name, direct=output_dir, sid=species, alt=file_name)
-
-
-            # Call Damians benchmark script on all of train - test - valid
-            print("Computing summary statistics for {} data.".format(file_name))
-            command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-                ["{}/quality_full_{}.{}.{}.json".format(
-                    output_dir, model_name, file_name, species)]
-            out = subprocess.run(command)
-    
-
-    
+            x_outs = save_outputs_benchmark(x=x, probas=x_probas,  sid=species,
+                                            direc=output_dir, model_name=model_name + '.train_data')
             
+            v_outs = save_outputs_benchmark(x=v, probas=v_probas,  sid=species,
+                                            direc=output_dir, model_name=model_name + '.hold_out_data')
+
+
+            # Get the intersection benchmark plot 
+            filtered_string_score_x = get_interesction(target=x_outs, reference=combined_scores)
+            filtered_string_score_v = get_interesction(target=v_outs, reference=combined_scores)
+
+            data_intersections = {
+            'train_data': filtered_string_score_x,
+            'hold_out_data': filtered_string_score_v}
+
+            t2 = time.time()
+            print("Finished predictions in {}".format(t2-t1))
+
+            print('Saving models')
+            for i, model in enumerate(output['classifier']):
+                torch.save(model.state_dict(), os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
+
+
+            for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
+                
+                # Save data compatible for Damaians benchmark script (all data)
+                save_dir = os.path.join(
+                        output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
+
+                filtered_file.to_csv(
+                        save_dir, header=False, index=False, sep='\t')
+
+                                                
+                json_report = generate_quality_json(
+                        model_name=model_name, direct=output_dir, sid=species, alt=file_name)
+
+
+                # Call Damians benchmark script on all of train - test - valid
+                print("Computing summary statistics for {} data.".format(file_name))
+                command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+                    ["{}/quality_full_{}.{}.{}.json".format(
+                        output_dir, model_name, file_name, species)]
+                out = subprocess.run(command)
+        
+
+        
+                

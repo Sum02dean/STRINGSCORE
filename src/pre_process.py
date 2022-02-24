@@ -5,7 +5,8 @@ from collections import Counter as Counter
 import numpy as np 
 import pandas as pd
 import argparse
-
+import sklearn
+from sklearn.preprocessing import StandardScaler
 
 
 # Extract input variables from Argparse
@@ -28,6 +29,10 @@ if USE_ARGPASE:
     parser.add_argument('-o', '--output_dir', type=str, metavar='',
                     required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
+    parser.add_argument('-pp', '--pre_process', type=str, metavar='',
+                    required=True, default='False', help='to pre-process train and test splits')
+
+
 
     # Collect command line args
     args = parser.parse_args()
@@ -36,6 +41,7 @@ if USE_ARGPASE:
     output_dir = os.path.join(args.output_dir)
     neg_ratio = args.neg_ratio
     test_ratio = args.test_ratio
+    pre_process = True if args.pre_process == 'True' else False
     print("collected command-line args: {}".format(args))
 
 
@@ -82,11 +88,71 @@ for (species, species_name) in species_dict.items():
         print("Splitting data based on COG exlusions...")
         x_train, x_val = split_on_cogs_alt(x=x_cogs)
 
+        # All data
+        x_all = copy.deepcopy(data)
+        x_all.drop(columns=['protein1', 'protein2', 'combined_score', 'homology'], inplace=True)
+        ind_all = ["and".join([data.protein1.values[i], data.protein2.values[i]]) 
+                for i in range(0, len(data.protein1))]
+        x_all['labels'] = labels.values
+        x_all.index = ind_all
+
+
+        if pre_process:
+
+            # Remove string cols
+            cols = x_train.columns
+            all_cols = x_all.columns
+
+            # All data
+            ind_all = x_all.index
+            all_labels = x_all['labels'] 
+            x_all.drop(columns=['labels'], inplace=True)
+
+            # Train data
+            ind_train = x_train.index
+            x_labels = x_train['labels'] 
+            x_cogs = x_train['cogs']
+            x_train.drop(columns=['labels', 'cogs'], inplace=True)
+
+            # Valid data
+            ind_val = x_val.index
+            v_labels = x_val['labels'] 
+            v_cogs = x_val['cogs']
+            x_val.drop(columns=['labels', 'cogs'], inplace=True)
+            
+            # Scale the data
+            ss = StandardScaler()
+            x_train = pd.DataFrame(ss.fit_transform(x_train))
+            x_val = pd.DataFrame(ss.transform(x_val))
+            x_all = pd.DataFrame(ss.transform(x_all))
+
+            # Add back cols and indices to train
+            x_train['labels'] = x_labels.values
+            x_train['cogs'] = x_cogs.values
+            x_train.index = ind_train
+
+            # Add back cols and indices to val
+            x_val['labels'] = v_labels.values
+            x_val['cogs'] = v_cogs.values
+            x_val.index = ind_val
+
+            # Add back indices to all
+            x_all['labels'] = all_labels.values
+            x_all.index = ind_all
+
+            # Add back in the rest of the columns
+            x_train.columns = cols
+            x_val.columns = cols
+            x_all.columns = all_cols
+           
+
         # Save the data to file
         print("Saving data to: {} ...".format(output_dir))
         x_train.to_csv(os.path.join(output_dir, '{}_train.csv'.format(species_name)))
         x_val.to_csv(os.path.join(output_dir, '{}_valid.csv'.format(species_name)))
+        x_all.to_csv(os.path.join(output_dir, '{}_all.csv'.format(species_name)))
         print('\n')
+
 print("Finished pre-processing.")
 
         

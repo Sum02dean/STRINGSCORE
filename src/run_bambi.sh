@@ -2,7 +2,7 @@
 /mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python bambi_model.py \
 --output_dir models/drop_zero_col/multi_run/ \
 --model_name bambi \
---species_id '4932' \
+--species_id '9606' \
 --cogs True \
 --use_noise True \
 --class_weight 4 \
@@ -18,4 +18,4 @@
 
 # ecoli: 511145
 # human: 9606
-# yeast: 4932
+# yeast: 4932 slac
