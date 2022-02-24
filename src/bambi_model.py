@@ -415,10 +415,11 @@ for (species, species_name) in species_dict.items():
         'hold_out_data': filtered_string_score_v}
 
         t2 = time.time()
-        print("Finished predictions in {}".format(t2-t1))
+        print("Finished predictions in {}\n\n".format(t2-t1))
 
+        print('Saving model(s)')
         for i, model in enumerate(output['classifiers']):
-                az.to_netcdf(model, filename=os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
+            az.to_netcdf(model, filename=os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
 
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
             
