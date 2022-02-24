@@ -35,6 +35,7 @@ def mean_probas(x, models, classifiers):
     for i in range(len(models)):
         idata = models[i].predict(classifiers[i], data=x, inplace=False)
         mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
+        
     
     # Get the man proabilities
     ensemble_probas = mp / len(models)
@@ -314,11 +315,11 @@ else:
 
 
 # Check whether the specified path exists or not
-isExist = os.path.exists(output_dir)
+isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
 if not isExist:
     # Create it
-    os.makedirs(output_dir)
-    print("{} directory created.".format(output_dir))
+    os.makedirs(os.path.join(output_dir, 'ensemble'))
+   print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
 
 # Specify link paths
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
@@ -415,6 +416,9 @@ for (species, species_name) in species_dict.items():
 
         t2 = time.time()
         print("Finished predictions in {}".format(t2-t1))
+
+        for i, model in enumerate(output['classifiers']):
+                az.to_netcdf(model, filename=os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
 
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
             

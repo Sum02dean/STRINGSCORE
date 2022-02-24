@@ -295,12 +295,10 @@ def run_pipeline(x, params, scale=False, weights=None,
         hidden_size = params['hidden_size']
         output_size = params['output_size']
     
-        criterion = nn.BCELoss(reduction='mean')
         net = BinaryClassification(input_dim=input_size, hidden_dim=[hidden_size], output_dim=output_size)
-        criterion = nn.BCEWithLogitsLoss()
-        optimizer = optim.Adam(net.parameters(), lr=learning_rate)
         print('Network Architecture: \n',net)
         net = train_network(params=params, x_train=x_train, y_train=y_train)
+        params['net'] = net
         print("Predicting on test data")
         net, y, y_hat, y_probas = predict(net=net, x_test=x_test, y_test=y_test)
         
@@ -540,7 +538,7 @@ if HIDE:
             t2 = time.time()
             print("Finished predictions in {}".format(t2-t1))
 
-            print('Saving models')
+            print('Saving model(s)')
             for i, model in enumerate(output['classifier']):
                 torch.save(model.state_dict(), os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
 
