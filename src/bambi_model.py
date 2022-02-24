@@ -172,13 +172,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         x_train, y_train = train_splits[i]
         x_test, y_test = test_splits[i]
         
-        # Scale the data if necessary
-        if scale:
-            col_names = x_train.columns
-            x_train, x_test, mms = scale_features(x_train, x_test, method='standard')
-            x_train.columns = col_names
-            x_test.columns = col_names
-        
         # Add normally distributed noise to following features
         if noise:
             dont_perturb = ['labels', 'cogs']
