@@ -29,7 +29,7 @@ class BinaryClassification(nn.Module):
     def __init__(self, input_dim=11, hidden_dim=[11], output_dim=1):
         """ A Neural Network which can be adaptively parameterised for tabular data predictions.
 
-        :param input_dim: the number of input units (features), defaults to 12
+        :param input_dim: the number of input units (features), defaults to 11
         :type input_dim: int, optional.
         
         :param hidden_dim: each element value gives the number of neurons per layer,
