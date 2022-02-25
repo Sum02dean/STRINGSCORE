@@ -1,25 +1,12 @@
-import sys
 import os
-from matplotlib import transforms
 import pandas as pd
-src_path = os.getcwd().replace('/ideas', '')
-sys.path.append(src_path)
 from string_utils import *
-from sklearn.model_selection import StratifiedKFold, KFold
 import numpy as np
-import matplotlib.pyplot as plt
 import arviz as az
-import pymc3 as pm
-import theano as thno
-import theano.tensor as T
-from scipy import integrate
-from scipy.optimize import fmin_powell
-import seaborn as sns
 import bambi as bmb
 import argparse
 import subprocess
 import time
-from sklearn.decomposition import TruncatedSVD
 
 # Useful functions.
 def get_formula(feature_names):
