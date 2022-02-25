@@ -27,7 +27,7 @@ from collections import Counter as C
 
 class BinaryClassification(nn.Module):
     def __init__(self, input_dim=11, hidden_dim=[11], output_dim=1):
-        """ A Neural Network which can be adaptively parameterised for tabulra data predictions.
+        """ A Neural Network which can be adaptively parameterised for tabular data predictions.
 
         :param input_dim: the number of input units (features), defaults to 12
         :type input_dim: int, optional.
