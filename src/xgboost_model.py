@@ -270,7 +270,7 @@ params = {'max_depth': 15,
 # Map species ID to  name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
 
-# Run code for each species given in bash file: so this n_runs times to reduce stochasticity 
+# Run code for each species given in bash file: do this 'n_runs' times to reduce stochasticity 
 n_runs = 4
 predictions = []
 probabilities = []
@@ -312,22 +312,16 @@ for (species, species_name) in species_dict.items():
         print("Finished training in {}".format(t2-t1))
 
         
-
-            
-
         ###############################################################################################
         # Make predictions
         ###############################################################################################
         
-
-
         # Grab classifier(s)
         classifiers = output['classifier']
 
         # Remove COG labels from the data 
         v.drop(columns=['labels', 'cogs'], inplace=True)
         # x.drop(columns=['labels', 'cogs'], inplace=True)
-
         x = a
         x.drop(columns=['labels'], inplace=True)
         
@@ -360,9 +354,9 @@ for (species, species_name) in species_dict.items():
         print('Saving model(s)')
         for i, model in enumerate(output['classifier']):
             model.save_model(os.path.join(output_dir, 'ensemble', 'model_{}_{}.json'.format(i, species)))
-
+        
+        # Save data compatible for Damaians benchmark script (all data)
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
-            # Save data compatible for Damaians benchmark script (all data)
             save_dir = os.path.join(
                     output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
 

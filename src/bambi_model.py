@@ -262,8 +262,6 @@ full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 # Map species ID to species name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
-full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 # Define model parameters
 params = {
@@ -292,8 +290,7 @@ for (species, species_name) in species_dict.items():
         # Load in all data (even without known KEGG memberships)
         x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
-
-        # Remove regference to the original data 
+        # Remove reference to the original data 
         x = copy.deepcopy(train_data)
         a = copy.deepcopy(all_data)
         v = copy.deepcopy(valid_data)
