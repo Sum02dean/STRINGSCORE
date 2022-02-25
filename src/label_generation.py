@@ -53,5 +53,5 @@ for (species, species_name) in species_dict.items():
         # Generate the labels
         species_x = full_kegg[full_kegg[0] == int(species)]
         species_kegg = pd.read_csv('data/{}.protein.links.full.v11.5.txt'.format(species), sep=' ', header=0)
-        ecoli_labels = generate_labels(X=species_kegg, pathway_names=species_x[1], pathway_members=species_x[3], file_name=fn, verbosity=2)
+        generated_labels = generate_labels(X=species_kegg, pathway_names=species_x[1], pathway_members=species_x[3], file_name=fn, verbosity=2)
 print("Finished generating labels for all.")

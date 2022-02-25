@@ -5,7 +5,7 @@ Don't foget to specify the --name as [envname] of your choice. The environment.y
 2. Activate the python env
 3. Copy the data: $: cp /mnt/mnemo1/sum02dean/dean_mnt/projects/STRINGSCORE/src/data [PATH], where [PATH] is your project directory.
 4. Configure settings in the run_xgboost.sh file
-5. Run pipeline with $: bash run_xgboost.sh
+5. Run the pipeline with $: bash run_xgboost.sh
  
 Best params:
 params = {'max_depth': 15,
