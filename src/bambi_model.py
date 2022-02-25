@@ -205,7 +205,7 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         output_dict = {
         'predictions': predictions,
         'models': models,
-        'classifiers': classifiers,
+        'classifier': classifiers,
         'train_splits': train_splits,
         'test_splits': test_splits
         }
@@ -312,7 +312,7 @@ isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
 if not isExist:
     # Create it
     os.makedirs(os.path.join(output_dir, 'ensemble'))
-   print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
+    print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
 
 # Specify link paths
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
@@ -373,7 +373,7 @@ for (species, species_name) in species_dict.items():
         print("Making inference")
 
         # Grab classifier(s)
-        classifiers = output['classifiers']
+        classifiers = output['classifier']
         models = output['models']
 
         # Remove COG labels from the data 
@@ -411,11 +411,10 @@ for (species, species_name) in species_dict.items():
         print("Finished predictions in {}\n\n".format(t2-t1))
 
         print('Saving model(s)')
-        for i, model in enumerate(output['classifiers']):
+        for i, model in enumerate(output['classifier']):
             az.to_netcdf(model, filename=os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
 
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
-            
             # Save data compatible for Damaians benchmark script (all data)
             save_dir = os.path.join(
                     output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))

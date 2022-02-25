@@ -2,7 +2,7 @@
 /mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python xgboost_model.py \
 --output_dir models/comparison/ \
 --model_name xgboost \
---species_id '511145 9606' \
+--species_id '511145' \
 --cogs True \
 --use_noise True \
 --class_weight 4 \

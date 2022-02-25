@@ -247,11 +247,12 @@ else:
     n_samples = 1
 
 # Check whether the specified path exists or not
-isExist = os.path.exists(output_dir)
+isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
 if not isExist:
     # Create it
-    os.makedirs(output_dir)
-    print("{} directory created.".format(output_dir))
+    os.makedirs(os.path.join(output_dir, 'ensemble'))
+    print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
+
 
 # Specify link paths
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
@@ -356,8 +357,11 @@ for (species, species_name) in species_dict.items():
         'train_data': filtered_string_score_x,
         'hold_out_data': filtered_string_score_v}
 
+        print('Saving model(s)')
+        for i, model in enumerate(output['classifier']):
+            model.save_model(os.path.join(output_dir, 'ensemble', 'model_{}_{}.json'.format(i, species)))
+
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
-            
             # Save data compatible for Damaians benchmark script (all data)
             save_dir = os.path.join(
                     output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
