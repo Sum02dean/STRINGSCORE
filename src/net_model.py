@@ -82,18 +82,21 @@ class BinaryClassification(nn.Module):
             self.layers.append(nn.ReLU())
             self.layers.append(nn.BatchNorm1d(h_out))
           
-        # Activation and relu layers
-        self.relu = nn.ReLU()
+        # Optional dropout usage
         self.dropout = nn.Dropout(p=0.02)
-       
+        
     def forward(self, inputs):
-      x = inputs
-      for layer in self.layers:
-        x = layer(x)
-      
-    #   x = self.dropout(x)
-      x = self.output_layer(x)
-      return x
+        
+        dropout = False
+        x = inputs
+        for layer in self.layers:
+            x = layer(x)
+        
+        # Final outputs
+        if dropout:
+            x = self.dropout(x)
+        x = self.output_layer(x)
+        return x
 
 def train_network(params, x_train, y_train):
     
@@ -127,17 +130,19 @@ def train_network(params, x_train, y_train):
         epoch_loss = 0
         epoch_acc = 0
         for X_batch, y_batch in train_loader:
+            
+            # Grab data
             X_batch, y_batch = X_batch, y_batch
             optimizer.zero_grad()
             
+            # Predict
             y_pred = net(X_batch)
-            
             loss = criterion(y_pred, y_batch.unsqueeze(1))
             acc = binary_acc(y_pred, y_batch.unsqueeze(1))
-            
             loss.backward()
-            optimizer.step()
             
+            # Step
+            optimizer.step()
             epoch_loss += loss.item()
             epoch_acc += acc.item()
             
@@ -149,12 +154,12 @@ def predict(net, x_test, y_test):
     # Establish train data-loader
     to_shuffle = True
         # Generate train tensors
-    y_tensor_train = torch.FloatTensor(y_test.values)
-    x_tensor_train = torch.FloatTensor(x_test.values)
+    y_tensor_test = torch.FloatTensor(y_test.values)
+    x_tensor_test = torch.FloatTensor(x_test.values)
         
     # Create the data loader
     to_shuffle = False
-    test_tensor = data_utils.TensorDataset(x_tensor_train, y_tensor_train)
+    test_tensor = data_utils.TensorDataset(x_tensor_test, y_tensor_test)
     test_loader = data_utils.DataLoader(test_tensor, batch_size=len(y_test), shuffle=to_shuffle)
 
 
