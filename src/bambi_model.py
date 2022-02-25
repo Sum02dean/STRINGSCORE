@@ -33,61 +33,16 @@ def mean_probas(x, models, classifiers):
     mp = np.zeros(np.shape(x)[0])
 
     for i in range(len(models)):
+        # Estimate the max-likelihood of the predictive posterior
         idata = models[i].predict(classifiers[i], data=x, inplace=False)
         mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
         
-    
-    # Get the man proabilities
+    # Get the mean probabilities
     ensemble_probas = mp / len(models)
     # This is a hack to guarentee that the probas work with the generate_output() script
     ensemble_probas = [(x,x) for x in ensemble_probas]
     return ensemble_probas
 
-def select_pcs(x, n_pcs=None, use_cogs=True, svd=None):
-    """Selects the appropriate amount of principle components based on variance explained       
-
-    :param x: Design matrix including labels and COGs
-    :type x: pandas dataframe
-    """
-    print('Transformatin data with SVD')
-    # Don't take eigen decompositon for labels or COGs
-    y = x['labels'].values
-    
-    if use_cogs:
-        cogs = x['cogs'].values
-        x = x.drop(columns=['cogs'], inplace=False)
-    x = x.drop(columns=['labels'], inplace=False)
-
-    # Intantiate svd and compute PCs of x
-    _, n_cols = np.shape(x)
-    n_comp = n_cols-1
-
-    if svd == None:
-        svd = TruncatedSVD(n_components=n_comp, random_state=42)
-        x_pc = pd.DataFrame(svd.fit_transform(x))
-    else:
-        x_pc = pd.DataFrame(svd.transform(x))
-
-    # Set the index
-    x_pc.index = x.index
-
-    if n_pcs == None:
-        # Get vairance explained
-        ev = np.array(svd.explained_variance_ratio_)
-        ev_cumsum = np.cumsum(ev)
-        pcs = np.array([x for x in range(1, n_comp + 1)])
-        best_pcs = pcs[ev_cumsum <= 0.95]
-        n_comp = best_pcs[-1]
-    else:
-        n_comp = n_pcs
-    # Subset the dataframe
-    x_pc = x_pc.iloc[:, :n_comp]
-    x_pc['labels'] = y
-
-    if use_cogs:
-        x_pc['cogs'] = cogs
-
-    return x_pc, n_pcs, svd
 
 def run_pipeline(x, params, scale=False, weights=None, cogs=True, 
                 train_ratio=0.8, noise=False, n_runs=3, run_cv=False, verbose_eval=True):
@@ -131,7 +86,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
     classifiers = []
     predictions = []
     
-
     # Pre-allocate the datasets
     for i in range(1, n_runs+1):
 
@@ -175,9 +129,10 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
         # Add normally distributed noise to following features
         if noise:
             dont_perturb = ['labels', 'cogs']
+
             # Define guassian noise argumnets
             mu = 0
-            sigma = 0.05
+            sigma = 0.005
 
             x_train = x_train.apply(lambda x: inject_noise(
                 x, mu=mu, sigma=sigma) if x.name not in dont_perturb else x)
@@ -186,7 +141,7 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
                 x, mu=mu, sigma=sigma) if x.name not in dont_perturb else x)
         
 
-        # Run probabilistic LR bambi model
+        # Run bambi model
         x_train['y'] = y_train
         
         # Get the function formula
@@ -318,7 +273,7 @@ if not isExist:
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-# Map species ID to  name
+# Map species ID to species name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
@@ -337,19 +292,17 @@ for (species, species_name) in species_dict.items():
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
-        # Load in pre-defined train and validate sets
+        # Paths for pre-defined train and validate sets
         train_path = "pre_processed_data/script_test/{}_train.csv".format(species_name)
         valid_path = "pre_processed_data/script_test/{}_valid.csv".format(species_name)
         all_path = 'pre_processed_data/script_test/{}_all.csv'.format(species_name)    
 
-        
-        # Load train, test, valid data
+        # Load data
         train_data = pd.read_csv(train_path, header=0, low_memory=False, index_col=0)
         valid_data = pd.read_csv(valid_path, header=0, low_memory=False, index_col=0)
         all_data = pd.read_csv(all_path, header=0, low_memory=False, index_col=0)
 
-        # Load in all data even without KEGG memberships
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        # Load in all data (even without known KEGG memberships)
         x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
 
@@ -398,7 +351,6 @@ for (species, species_name) in species_dict.items():
         v_outs = save_outputs_benchmark(x=v, probas=ensemble_probas_v,  sid=species,
                                         direc=output_dir, model_name=model_name + '.hold_out_data')
 
-
         # Get the intersection benchmark plot 
         filtered_string_score_x = get_interesction(target=x_outs, reference=combined_scores)
         filtered_string_score_v = get_interesction(target=v_outs, reference=combined_scores)
@@ -410,10 +362,12 @@ for (species, species_name) in species_dict.items():
         t2 = time.time()
         print("Finished predictions in {}\n\n".format(t2-t1))
 
+        # Cache each model in the ensemble
         print('Saving model(s)')
         for i, model in enumerate(output['classifier']):
             az.to_netcdf(model, filename=os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
 
+        # For each filtered benchamark scrip - launch summary statistics on predictions from CML
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
             # Save data compatible for Damaians benchmark script (all data)
             save_dir = os.path.join(
@@ -422,7 +376,6 @@ for (species, species_name) in species_dict.items():
             filtered_file.to_csv(
                     save_dir, header=False, index=False, sep='\t')
 
-                                            
             json_report = generate_quality_json(
                     model_name=model_name, direct=output_dir, sid=species, alt=file_name)
 

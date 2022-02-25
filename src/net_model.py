@@ -84,7 +84,7 @@ class BinaryClassification(nn.Module):
           
         # Optional dropout usage
         self.dropout = nn.Dropout(p=0.02)
-        
+
     def forward(self, inputs):
         
         dropout = False
@@ -151,7 +151,7 @@ def train_network(params, x_train, y_train):
 
 def predict(net, x_test, y_test):
 
-    # Establish train data-loader
+    # Establish data-loader
     to_shuffle = True
         # Generate train tensors
     y_tensor_test = torch.FloatTensor(y_test.values)
