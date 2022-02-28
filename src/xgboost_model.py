@@ -159,13 +159,62 @@ def run_pipeline(x, params, scale=False, weights=None,
 
     return output_dict
 
-def mean_probas(x, clfs):
+def mean_probas(x, clfs, compute_summary=False):
     probabilities = 0
+    summaries = []
     for clf in clfs:
         probas = clf.predict_proba(x)
         probabilities += probas
+        if compute_summary:
+            df = pd.DataFrame(probas, columns=['negative', 'positive'])
+            summaries.append(df)
     probas = probabilities/len(clfs)
-    return probas
+    return probas, summaries
+
+def combine_ensemble_reports(df_list, protein_names):
+    """ Combines the each dataset and lists each results under multi-index
+
+    :param df_list: list containing pandas DF
+    :type df_list: list
+    :param protein_names: index list
+    :type protein_names: list
+    """
+
+    x = copy.deepcopy(df_list[0])
+    pn = [x.split("and") for x in protein_names]
+    pn1, pn2 = list(zip(*pn))
+    x['run'] = ['run_{}'.format(0)] * np.shape(x)[0]
+    x['protein1'] = pn1
+    x['protein2'] = pn2
+    x.reset_index(inplace=True, drop=True)
+
+    # Extract each subsequent pandas DatFrame and modify it
+    for i in range(1, len(df_list)):
+        xi = df_list[i]
+        xi['protein1'] = pn1
+        xi['protein2'] = pn2
+        xi['run'] = ['run_{}'.format(i)] * np.shape(xi)[0]
+        xi.reset_index(inplace=True, drop=True)
+
+        # Concatenate the 2 pandas DataFrames
+        x = pd.concat([x, xi], axis=0)
+
+    # x.drop(columns=['index'], inplace=True)
+    x.sort_index()
+
+    # Define multi-indices
+    inda = x.index.values
+    indb = x['run'].values
+
+    # Set as tuple object & create MultiIndex (MI) obj
+    tuples = list(zip(inda, indb))
+    index = pd.MultiIndex.from_tuples(tuples, names=["id", "run"])
+
+    # Assign indicies using MI object
+    x = pd.DataFrame(x.values, columns=x.columns, index=index)
+    x = x.sort_index(level='id')
+    x.drop(columns=['run'], inplace=True)
+    return x
 
 
 ###############################################################################################
@@ -253,7 +302,6 @@ if not isExist:
     os.makedirs(os.path.join(output_dir, 'ensemble'))
     print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
 
-
 # Specify link paths
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
@@ -279,32 +327,27 @@ for (species, species_name) in species_dict.items():
     if species in species_id:
         print("Computing for {}".format(species))
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-        # label_path = 'data/{}_labels.csv'.format(species_name)
-        # labels = pd.read_csv(label_path, index_col=False, header=None)
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
         # Load in pre-defined train and validate sets
         train_path = "pre_processed_data/script_test/{}_train.csv".format(species_name)
         valid_path = "pre_processed_data/script_test/{}_valid.csv".format(species_name)
-        all_path = 'pre_processed_data/script_test/{}_all.csv'.format(species_name)    
+        all_path = "pre_processed_data/script_test/{}_all.csv".format(species_name)    
 
         # Load train, test, valid data
         train_data = pd.read_csv(train_path, header=0, low_memory=False, index_col=0)
         valid_data = pd.read_csv(valid_path, header=0, low_memory=False, index_col=0)
         all_data = pd.read_csv(all_path, header=0, low_memory=False, index_col=0)
 
-
         # Load in all data even without KEGG memberships
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
         x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
         
-
         # Remove regference to the original data  (uncomment as necessary)
         x = copy.deepcopy(train_data)
         a = copy.deepcopy(all_data)
         v = copy.deepcopy(valid_data)
         
-    
         t1 = time.time()
         output = run_pipeline(x=x,cogs=use_cogs,
                             params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_samples, scale=pre_process)
@@ -324,16 +367,22 @@ for (species, species_name) in species_dict.items():
         # x.drop(columns=['labels', 'cogs'], inplace=True)
         x = a
         x.drop(columns=['labels'], inplace=True)
-        
 
         # Get ensemble probabilities
-        ensemble_probas_x = mean_probas(x, classifiers)
-        ensemble_probas_v = mean_probas(v, classifiers)
+        ensemble_probas_x, summaries_x = mean_probas(x, classifiers, compute_summary=True)
+        ensemble_probas_v, summaries_v = mean_probas(v, classifiers, compute_summary=True)
+
+        # Get ensemble reports
+        c_x = combine_ensemble_reports(summaries_x, protein_names = x.index.values)
+        c_v = combine_ensemble_reports(summaries_v, protein_names = v.index.values)
+
+        # Save ensemble reports
+        c_x.to_csv(os.path.join(output_dir, 'ensemble', 'ensemble_report_x_{}'.format(species)))
+        c_v.to_csv(os.path.join(output_dir, 'ensemble', 'ensemble_report_v_{}.csv'.format(species)))
         
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
         combined_scores = pd.read_csv(combined_score_file, header=None, sep='\t')
-
 
         # Save data compatible for Damaians benchmark script (all data)
         x_outs = save_outputs_benchmark(x=x, probas=ensemble_probas_x,  sid=species,
@@ -341,7 +390,6 @@ for (species, species_name) in species_dict.items():
         
         v_outs = save_outputs_benchmark(x=v, probas=ensemble_probas_v,  sid=species,
                                         direc=output_dir, model_name=model_name + '.hold_out_data')
-
 
         # Get the intersection benchmark plot 
         filtered_string_score_x = get_interesction(target=x_outs, reference=combined_scores)
@@ -362,11 +410,9 @@ for (species, species_name) in species_dict.items():
 
             filtered_file.to_csv(
                     save_dir, header=False, index=False, sep='\t')
-
                                             
             json_report = generate_quality_json(
                     model_name=model_name, direct=output_dir, sid=species, alt=file_name)
-
 
             # Call Damians benchmark script on all of train - test - valid
             print("Computing summary statistics for {} data.".format(file_name))

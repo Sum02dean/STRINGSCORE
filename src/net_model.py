@@ -295,6 +295,7 @@ def run_pipeline(x, params, scale=False, weights=None,
     
         net = BinaryClassification(input_dim=input_size, hidden_dim=[hidden_size], output_dim=output_size)
         params['net'] = net
+        
         print('Network Architecture: \n',net)
         net = train_network(params=params, x_train=x_train, y_train=y_train)
         print("Predicting on test data")

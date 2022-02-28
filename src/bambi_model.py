@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from string_utils import *
+from string_utils import * # <-- Majority of the functions are found here.
 import numpy as np
 import arviz as az
 import bambi as bmb
@@ -8,28 +8,89 @@ import argparse
 import subprocess
 import time
 
-# Useful functions.
+# Script specific functions.
 def get_formula(feature_names):
+    """Generates the formula required for the bambi generalized linear model (GLM)
+
+    :param feature_names: extracted columns  names as list of string
+    :type feature_names: list
+    :return: a string formula containing the GLM functional formulae
+    :rtype: string
+    """
     template = ['{}'] * (len(feature_names))
     template = " + ".join(template)
     template = template.format(*list(feature_names))
     f = 'y ~ ' +  template 
     return f
 
-def mean_probas(x, models, classifiers):
+def mean_probas(x, models, classifiers, compute_summary=False):
     mp = np.zeros(np.shape(x)[0])
-
+    summaries = []
     for i in range(len(models)):
         # Estimate the max-likelihood of the predictive posterior
         idata = models[i].predict(classifiers[i], data=x, inplace=False)
-        mp += np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
+        
+        if compute_summary:
+            print('\nGenerating ensemble report {} of {} ... '.format(i+1, len(models)))
+            summaries.append(az.summary(idata.posterior['y_mean']))
+
+        proba = np.mean(idata.posterior['y_mean'].values, axis=(0, 1))
+        mp += proba
         
     # Get the mean probabilities
     ensemble_probas = mp / len(models)
     # This is a hack to guarentee that the probas work with the generate_output() script
     ensemble_probas = [(x,x) for x in ensemble_probas]
-    return ensemble_probas
+    return ensemble_probas, summaries
 
+def combine_ensemble_reports(df_list, protein_names):
+    """ Combines the each dataset and lists each results under multi-index
+
+    :param df_list: list containing pandas DF
+    :type df_list: list
+    :param protein_names: index list
+    :type protein_names: list
+    """
+    try:
+        assert (len(df_list) > 1)
+    except:
+        raise AssertionError("Expected len(df_list) > 1; got {}".format(len(df_list)))
+
+    x = copy.deepcopy(df_list[0])
+    pn = [x.split("and") for x in protein_names]
+    pn1, pn2 = list(zip(*pn))
+    x['run'] = ['run_{}'.format(0)] * np.shape(x)[0]
+    x['protein1'] = pn1
+    x['protein2'] = pn2
+    x.reset_index(inplace=True, drop=False)
+
+    # Extract each subsequent pandas DatFrame and modify it
+    for i in range(1, len(df_list)):
+        xi = df_list[i]
+        xi['protein1'] = pn1
+        xi['protein2'] = pn2
+        xi['run'] = ['run_{}'.format(i)] * np.shape(xi)[0]
+        xi.reset_index(inplace=True, drop=True)
+
+        # Concatenate the 2 pandas DataFrames
+        x = pd.concat([x, xi], axis=0)
+        
+    x.drop(columns=['index'], inplace=True)
+    x.sort_index()
+    
+    # Define multi-indices
+    inda = x.index.values
+    indb = x['run'].values
+
+    # Set as tuple object & create MultiIndex (MI) obj
+    tuples = list(zip(inda, indb))
+    index = pd.MultiIndex.from_tuples(tuples, names=["id", "run"])
+
+    # Assign indicies using MI object
+    x = pd.DataFrame(x.values, columns=x.columns, index=index)
+    x = x.sort_index(level='id')
+    x.drop(columns=['run', 'mcse_mean',	'mcse_sd', 'ess_bulk', 'ess_tail', 'r_hat'], inplace=True)
+    return x
 
 def run_pipeline(x, params, scale=False, weights=None, cogs=True, 
                 train_ratio=0.8, noise=False, n_runs=3, run_cv=False, verbose_eval=True):
@@ -109,7 +170,7 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True,
 
     # Train across n-unique subsets of the data
     for i in range(len(train_splits)):
-        print("Computing predictions for sampling run {}".format(i+1))
+        print("\nComputing predictions for sampling run {}".format(i+1))
         x_train, y_train = train_splits[i]
         x_test, y_test = test_splits[i]
         
@@ -248,7 +309,6 @@ else:
     family = 'bernoulli'
     pre_process = False
 
-
 # Check whether the specified path exists or not
 isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
 if not isExist:
@@ -273,7 +333,7 @@ params = {
 for (species, species_name) in species_dict.items():
     if species in species_id:
 
-        print("Computing for {}".format(species))
+        print("\nComputing for {}".format(species))
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
@@ -307,7 +367,7 @@ for (species, species_name) in species_dict.items():
         ###############################################################################################
         
         t1 = time.time()
-        print("Making inference")
+        print("\nMaking inference")
 
         # Grab classifier(s)
         classifiers = output['classifier']
@@ -319,9 +379,17 @@ for (species, species_name) in species_dict.items():
         x.drop(columns=['labels', 'neighborhood'], inplace=True)
         v.drop(columns=['labels', 'cogs', 'neighborhood'], inplace=True)
 
-        # Get ensemble probabilities
-        ensemble_probas_x = mean_probas(x, models=models, classifiers=classifiers)
-        ensemble_probas_v = mean_probas(v, models=models, classifiers=classifiers)
+        # Get ensemble predictions
+        ensemble_probas_x, summaries_x = mean_probas(x, models=models, classifiers=classifiers, compute_summary='True')
+        ensemble_probas_v, summaries_v = mean_probas(v, models=models, classifiers=classifiers, compute_summary='True')
+        
+        # Get ensemble reports
+        c_x = combine_ensemble_reports(summaries_x, protein_names = x.index.values)
+        c_v = combine_ensemble_reports(summaries_v, protein_names = v.index.values)
+
+        # Save ensemble reports
+        c_x.to_csv(os.path.join(output_dir, 'ensemble', 'ensemble_report_x_{}'.format(species)))
+        c_v.to_csv(os.path.join(output_dir, 'ensemble', 'ensemble_report_v_{}.csv'.format(species)))
         
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
@@ -344,14 +412,14 @@ for (species, species_name) in species_dict.items():
         'hold_out_data': filtered_string_score_v}
 
         t2 = time.time()
-        print("Finished predictions in {}\n\n".format(t2-t1))
+        print("\nFinished predictions in {}\n\n".format(t2-t1))
 
         # Cache each model in the ensemble
         print('Saving model(s)')
         for i, model in enumerate(output['classifier']):
             az.to_netcdf(model, filename=os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
 
-        # For each filtered benchamark scrip - launch summary statistics on predictions from CML
+        # For each filtered benchmark scrip - launch summary statistics on predictions from CML
         for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
             # Save data compatible for Damaians benchmark script (all data)
             save_dir = os.path.join(
@@ -365,7 +433,7 @@ for (species, species_name) in species_dict.items():
 
 
             # Call Damians benchmark script on all of train - test - valid
-            print("Computing summary statistics for {} data.".format(file_name))
+            print("\nComputing summary statistics for {} data.".format(file_name))
             command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
                 ["{}/quality_full_{}.{}.{}.json".format(
                     output_dir, model_name, file_name, species)]
