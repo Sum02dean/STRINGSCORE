@@ -34,7 +34,8 @@ def generate_random_hash(hash_list):
 
     :param hash_list: list of hash's already used
     :type hash_list: list
-    :return: random hash, new appended hash_list containing generated hash
+
+    :return: random hash, newly appended hash_list containing generated hash
     :rtype: string, list.
     """
     r = ''.join(random.choices(string.ascii_lowercase, k=10))
@@ -50,8 +51,10 @@ def create_cog_map(spec_kegg, species_id='9606.'):
 
     :param spec_kegg: species specific KEGG data
     :type spec_kegg: pandas.core.Dataframe
+
     :param species_id: organism of interest(don't forget the '.'), defaults to '9606.'
     :type species_id: str, optional
+
     :return: coder
     :rtype: dict
     """
@@ -82,8 +85,10 @@ def generate_cog_labels(x, cog_map):
 
     :param x: x-data - x.index must be protein names - else run format_data()
     :type x: pandas.core.DataFrame object
+
     :param cog_map: COG encoder which maps proteins to respective COG groups
     :type cog_map: dict
+
     :return: original x annotated with COG group, were COGS are formated as sorted tuple
     :rtype: pandas DataFrame object
     """
@@ -116,9 +121,12 @@ def sample_cogs(x, class_label=1, shuffle=True, test_ratio=0.5):
     :param x: x-data
     :type x: pandas.core.DataFrame object
     :param class_label: positive class (1) or negative class (0), defaults to 1
+
     :type class_label: int, optional
+
     :param shuffle: to shuffle, defaults to True
     :type shuffle: bool, optional
+
     :return: a sample of the original x
     :rtype: pandas.core.DataFrame object.
     """
@@ -144,7 +152,7 @@ def sample_cogs(x, class_label=1, shuffle=True, test_ratio=0.5):
     # # Append label
     x_train['labels'] = [class_label] * np.shape(x_train)[0]
     x_test['labels'] = [class_label] * np.shape(x_test)[0]
-    
+
     return x_train, x_test
 
 
@@ -156,18 +164,22 @@ def split_on_cogs(x, y, cog_map, neg_ratio=4, test_ratio=0.2):
 
     :param y: labels
     :type y: pandas.core.DataFrame or pandas.core.Series
+
     :param cog_map: COG encoder mapping proteins to COGs
     :type cog_map: dict
+
     :param neg_ratio: ratio of desired negative examples, defaults to 4
     :type neg_ratio: int, optional
+
     :param train_ratio: ratio of desired train observations, defaults to 0.8
     :type train_ratio: float, optional
+
     :return: positive-train, positive-test, negative-train, negative-test
     :rtype: tulple of pandas.core.DataFrame objects
     """
     # np.random.seed(42)
     # Split into positive and negative sets
-    
+
     # Add COG labels to x dataframe
     x = copy.deepcopy(x)
     x = generate_cog_labels(x, cog_map)
@@ -178,16 +190,14 @@ def split_on_cogs(x, y, cog_map, neg_ratio=4, test_ratio=0.2):
     # x_pos = generate_cog_labels(x_pos, cog_map)
     # x_neg = generate_cog_labels(x_neg, cog_map)
 
-
     # Upscale based on neg-pos class ratios
-    k_pos = int(1/neg_ratio * np.shape(x_pos)[0])
+    k_pos = int(1 / neg_ratio * np.shape(x_pos)[0])
     k_neg = int(neg_ratio * k_pos)
 
     # Sample from respective datasets
     x_pos_sample = x_pos.sample(n=k_pos)
     x_neg_sample = x_neg.sample(n=k_neg)
 
-  
     # Generate train-test splits
     pos_train, pos_test = sample_cogs(
         x_pos_sample, class_label=1, test_ratio=test_ratio)
@@ -205,12 +215,12 @@ def format_data(x_data, y_data, drop_homology=True):
     :param data: x_data
     :type data: pandas.core.DataFrame
 
-    :param labels: class labels {0:negatives, 1:positives, 2:no-membership}
-    :type labels: int
-    
+    :param y_data: class labels {0:negatives, 1:positives, 2:no-membership}
+    :type y_data: int
+
     :param drop_homology: to drop the homology column, defaults to True
     :type drop_homology: bool, optional
-    
+
     :return: returns new_x, y, idx
     :rtype: pandas.core.DataFrame object, list, list
     """
@@ -245,10 +255,13 @@ def pre_process_data(data, labels, balance=True):
 
     :param data: x-data
     :type data: pandas.core.DataFrame
+
     :param labels: y-labels
     :type labels: iterable
+
     :param balance: to balance class ratios, defaults to True
     :type balance: bool, optional
+
     :return: processed x-data, processed y-labels
     :rtype: tuple of pandas DataFrame object and array
     """
@@ -272,7 +285,7 @@ def pre_process_data(data, labels, balance=True):
     # Extract and drop the labels column
     y = pd.concat([x_pos.labels, x_neg.labels])
     x = x.drop(columns=['labels'], inplace=False)
-    
+
     return x, y
 
 
@@ -281,10 +294,13 @@ def combine_datasets(Xs=[], ys=[], idxs=[]):
 
     :param Xs: all x-datas, defaults to []
     :type Xs: list of pandas.core.Dataframes, optional
+
     :param ys: all y-labels, defaults to []
     :type ys: list of pandas.core.DataFrame of pandas.core.Series, optional
+
     :param idxs: protein pair names as index list, defaults to []
     :type idxs: list of index lists, optional
+
     :return: x-data of concatenated Xs, y-labels of concatenated ys
     :rtype: tuple of pandas.core.DataFrame objects
     """
@@ -304,17 +320,21 @@ def model_splits(x, y, test_ratio):
 
     :param x: x-data with protein names as index
     :type x: pandas.core.DataFrame
-    :param labels: y-labels
-    :type labels: iterable e.g list, or pandas.core.Series
+
+    :param y: y-labels
+    :type y: iterable e.g list, or pandas.core.Series
+
     :param test_ratio: proportion of observations for testing
     :type test_ratio: float
+
     :return: train-test splits for both x-data and y-data
     :rtype: tuple of pandas DataFrame objects
     """
     data = copy.deepcopy(x)
     labels = copy.deepcopy(y)
     # Split the dataset using scikit learn implimentation
-    x_train, x_test, y_train, y_test = train_test_split(data, labels, test_size=test_ratio, shuffle=True)
+    x_train, x_test, y_train, y_test = train_test_split(
+        data, labels, test_size=test_ratio, shuffle=True)
     return x_train, x_test, y_train, y_test
 
 
@@ -323,15 +343,17 @@ def scale_features(dtrain, dtest, method='minmax'):
 
     :param dtrain: train x-data
     :type dtrain: pandas.core.DataFrame
+
     :param dtest: test x-data
     :type dtest: pandas.core.DataFrame
+
     :return: scaled dtrain and dtest datasets
     :rtype: tuple 2x pandas.core.DataFrames, sklearn Scaler() object
     """
 
-    if method ==' minmax':
+    if method == ' minmax':
         scaler = MinMaxScaler()
-    elif method =='standard':
+    elif method == 'standard':
         scaler = StandardScaler()
 
     x_train_sc = pd.DataFrame(scaler.fit_transform(dtrain))
@@ -345,8 +367,10 @@ def build_model(param, class_ratio=1):
 
     :param param: param dict containing all of the model parameters
     :type param: dict
+
     :param class_ratio: how many times to upscale positive class, defaults to 1
     :type class_ratio: int, optional
+
     :return: model
     :rtype: sklearn-wrapped XGBoost model
     """
@@ -356,16 +380,24 @@ def build_model(param, class_ratio=1):
     return clf
 
 
-
 def fit(clf, x_train, y_train, x_test, y_test):
     """Fit the model
 
     :param clf: the model
     :type clf: model object
+
     :param x_train: x-train data
     :type x_train: pandas.core.DataFrame object
+
+    :param y_train: y-train data
+    :type y_train: pandas.core.DataFrame object
+
+    :param x_test: x-test data
+    :type x_test: pandas.core.DataFrame object
+
     :param y_test: y-test
     :type y_test: pandas.core.DataFrame object
+
     :return: fitted clf model
     :rtype: clf model object
     """
@@ -386,10 +418,13 @@ def predict(clf, x_test, y_test):
 
     :param clf: XGBoost model
     :type clf: model object
+
     :param x_test: test-data
     :type x_test: pandas.core.DataFrame object
+
     :param y_test: test-labels
     :type y_test: iterable e.g. list or pandas.core.Series object
+
     :return: predictions, probabilities, accuracy, and the model
     :rtype: mixed tuple.
     """
@@ -408,8 +443,10 @@ def plot_roc(y_test, probas, plot=False):
 
     :param y_test: y-test labels
     :type y_test: iterable e.g list
+
     :param probas: class probabilities
     :type probas: list
+
     :return: auc score and visualize plots
     :rtype: float
     """
@@ -442,10 +479,13 @@ def inject_noise(x, mu=0.0, sigma=0.5):
 
     :param x: feature vector
     :type x: np.array
+
     :param mu: noise mean, defaults to 0.0
     :type mu: float, optional
+
     :param sigma: noise variance, defaults to 0.5
     :type sigma: float, optional
+
     :return: returns positive valued x with added noise
     :rtype:
     """
@@ -460,17 +500,26 @@ def save_outputs_benchmark(x, probas, sid='511145', direc='benchmark/cog_predict
 
     :param x: x-data to predict on
     :type x: pandas.core.DataFrame object
+
     :param probas: class probabilies of x
     :type probas: numpy.array()
+
     :param sid: species identifier, defaults to '511145'
     :type sid: str, optional
+
     :param direc: directory to save predictions to, defaults to 'benchmark/cog_predictions'
     :type direc: str, optional
+
     :param model_name: name of the model, defaults to '.single'
     :type model_name: str, optional
+
+    :param hold_out: whether the model is a hold-out set 
+    :type hold_out: Bool, optional
+
     :return: DataFrame with columns useful for benchmark script
     :rtype: pandas.core.DataFrame object
     """
+
     # Not implimented yet
     if hold_out:
         pass
@@ -495,8 +544,10 @@ def generate_quality_json(model_name, direct, sid='9606', alt=''):
     :type direct: str
     :param sid: specied identifier, defaults to '9606'
     :type sid: str, optional
-    :param hold_out: alternative naming convention, defaults to None
-    :type hold_out: string, optional
+
+    :param alt: alternative naming convention, defaults to None
+    :type alt: string, optional
+
     :return: json report and saves json to specifies directory path
     :rtype: dictionary
     """
@@ -542,11 +593,13 @@ def generate_quality_json(model_name, direct, sid='9606', alt=''):
 def get_interesction(target, reference):
     """Returns a new STRING benchmark dataset where the obersations are those mutual to refenence data (formated
        using save_output_benchmark() as expected for Damians benchmark script). 
-  
+
     :param target: the hold-out model dataset
     :type target: pandas.core.DataFrame
+
     :param reference: the STRING score dataset
     :type reference: pandas.core.DataFrame
+
     :return: New refernce dataset containing only observations mutual to hold-out set
     :rtype: pandas.core.DataFrame object
     """
@@ -580,10 +633,16 @@ def isolate_non_zero_feature(data, labels, predictions, foi='experiments'):
 
     :param data: organism data protein names are indexes
     :type data: pandas.core.DataFrame object
+
+    :param labels: label data
+    :type labels: pandas.core.DataFrame object
+
     :param predictions: predicted probability scores for positive class
     :type predictions: iterable e.g. list
+
     :param foi: feature of interest, only feature with non-zero elements, defaults to 'experiments'
     :type foi: str, optional
+
     :return: data where all rows are zero except for FOI column
     :rtype: pandas.core.DataFrame object
     """
@@ -593,14 +652,26 @@ def isolate_non_zero_feature(data, labels, predictions, foi='experiments'):
     data_exc = data_copy.loc[:, (data_copy.columns != foi)]
     # Extract indices were all row elements evaluate to zero
     idxes = data_exc.loc[(data_exc == 0).all(axis=1)].index
-    # # Use these indices to extract all zero elements where foi is non-zero in original data_copy    
+    # # Use these indices to extract all zero elements where foi is non-zero in original data_copy
     data_copy['predictions'] = predictions
     data_copy['labels'] = labels
     # Use these indices to extract all rows with all zero elements where foi is non-zero
     foi_data = data_copy.loc[idxes, :]
     return foi_data
 
+
 def split_on_cogs_alt(x, test_size=0.1):
+    """Splits the data on COG divisions
+
+    :param x: PPI dataset   
+    :type x: pandas.core.DataFrame
+
+    :param test_size: proportion of data to allocate to test, defaults to 0.1
+    :type test_size: float, optional
+
+    :return: A train set and test set containing no COG intersection
+    :rtype: _type_
+    """
 
     # Make a copy
     x_copy = copy.deepcopy(x)
@@ -618,8 +689,11 @@ def split_on_cogs_alt(x, test_size=0.1):
     neg_data = x_copy[x_copy.labels == 0]
 
     # Split on unique x_copy
-    x_train_pos, x_test_pos, _, _ = train_test_split(pos_data, pos_data.labels, test_size=test_size)
-    x_train_neg, x_test_neg, _, _ = train_test_split(neg_data, neg_data.labels, test_size=test_size)
+    x_train_pos, x_test_pos, _, _ = train_test_split(
+        pos_data, pos_data.labels, test_size=test_size)
+
+    x_train_neg, x_test_neg, _, _ = train_test_split(
+        neg_data, neg_data.labels, test_size=test_size)
 
     # Concatenate the positive and negative data for train and test
     x_train = pd.concat([x_train_pos, x_train_neg])
@@ -632,22 +706,45 @@ def split_on_cogs_alt(x, test_size=0.1):
     b = x_train_new['cogs'].isin(x_test['cogs'])
     id_to_drop = b[b == True].index
     x_train_final = x_train_new.drop(id_to_drop, inplace=False)
+
     return x_train_final, x_test
 
     # ==================== Label Generation utils ===========================
+# Please comment these functions
+
 
 def get_protein_names(X):
-    """ Precomputes set of all protein names, returns a list. """
+    """Precomputes set of all protein names, returns a list. 
+
+    :param X: PPI dataset
+    :type X: pandas.core.DataFrame
+    :return: A list containing all unique protein names
+    :rtype: list
+    """
+
     prot1_names = [x.split('.')[-1] for x in set(X.protein1.values)]
     prot2_names = [x.split('.')[-1] for x in set(X.protein2.values)]
     return list(set(prot1_names + prot2_names))
 
-def get_pathway_maps(X, pathway_names, pathway_members):
+# TODO revisit these functions
+
+
+def get_pathway_maps(pathway_names, pathway_members):
+    """Precomputes mapping between pathway names and proteins in that pathway.
+
+    :param pathway_names: _description_
+    :type pathway_names: _type_
+    :param pathway_members: _description_
+    :type pathway_members: _type_
+    :return: _description_
+    :rtype: _type_
+    """
+
     pathway_members = [list(x.split(" ")) for x in pathway_members.values]
-    """ Precomputes mapping between pathway names and proteins in that pathway. """
     pw_map = dict(zip(pathway_names, pathway_members))
     return pw_map
- 
+
+
 def get_memberships(protein_names, pathway_map):
     """ Precomputes mapping between protein and all of its pathway memberships"""
     protein_membership = defaultdict()
@@ -658,25 +755,27 @@ def get_memberships(protein_names, pathway_map):
             protein_membership[protein] = []
 
         # If protein identified in pathway proteins, map protein to the pathway name
-        for  j, (pathway_name, pathway_proteins) in enumerate(pathway_map.items()):
+        for j, (pathway_name, pathway_proteins) in enumerate(pathway_map.items()):
             if protein in pathway_proteins:
                 # Add pathway map to protein entry
                 protein_membership[protein].append(pathway_name)
                 # Make sure only one pathway name is given once
-                protein_membership[protein] = list(set(protein_membership[protein]))
+                protein_membership[protein] = list(
+                    set(protein_membership[protein]))
     return protein_membership
+
 
 def check_labels(p1, p2, protein_membership):
     " Identifies intersection of pathway memberships for each protein in the pair"
     # Grab memberships
     membership_1 = protein_membership[p1]
     membership_2 = protein_membership[p2]
-    
+
     # Get intersection
     compare = set(membership_1) & set(membership_2)
 
     # If one of the members have no membership
-    if membership_1 ==[] or membership_2 ==[]:
+    if membership_1 == [] or membership_2 == []:
         return 2
     # If there is an intersection between pathways
     elif len(compare) > 0:
@@ -685,13 +784,15 @@ def check_labels(p1, p2, protein_membership):
     elif len(compare) == 0:
         return 0
 
+
 def write_file(fn, x):
     """ Write the labels to file dynamically"""
     x = str(x)
     file_object = open(fn, 'a')
     file_object.write(x + '\n')
     return file_object
-    
+
+
 def generate_labels(X, pathway_names, pathway_members, file_name, verbosity=0):
     """ The full pipline"""
     # 1. Get protein names
@@ -700,14 +801,13 @@ def generate_labels(X, pathway_names, pathway_members, file_name, verbosity=0):
     pathway_map = get_pathway_maps(X, pathway_names, pathway_members)
     # 3. Get memberships
     protein_membership = get_memberships(protein_names, pathway_map)
-    
-    
-    #4. Generate labels
+
+    # 4. Generate labels
     protein_pairs = X.iloc[:, :2].values
     labels = np.zeros(shape=(np.shape(protein_pairs)[0], 1))
     for i, (protein_1, protein_2) in enumerate(protein_pairs):
         try:
-            # Look up protein entry 
+            # Look up protein entry
             p1 = protein_1.split('.')[-1]
             p2 = protein_2.split('.')[-1]
             label = check_labels(p1, p2, protein_membership)
@@ -718,25 +818,23 @@ def generate_labels(X, pathway_names, pathway_members, file_name, verbosity=0):
             labels[i]
             label = 3
             file_object = write_file(file_name, label)
-            
-            
+
     # Class labels only
     verbose_0_labels = labels[labels != 2]
     verbose_0_labels = verbose_0_labels[verbose_0_labels != 3]
-    
+
     # Class labels and non-membership
     verbose_1_labels = labels[labels != 3]
-    
+
     # Class labels, non-membership and missingness
     verbose_2_labels = labels
-    
+
     if verbosity == 0:
         outputs = verbose_0_labels
-        
+
     elif verbosity == 1:
         outputs = verbose_1_labels
     elif verbosity == 2:
         outputs = verbose_2_labels
     file_object.close()
     return outputs
-    
