@@ -377,7 +377,7 @@ for (species, species_name) in species_dict.items():
         c_v = combine_ensemble_reports(summaries_v, protein_names = v.index.values)
 
         # Save ensemble reports
-        c_x.to_csv(os.path.join(output_dir, 'ensemble', 'ensemble_report_x_{}'.format(species)))
+        c_x.to_csv(os.path.join(output_dir, 'ensemble', 'ensemble_report_x_{}.csv'.format(species)))
         c_v.to_csv(os.path.join(output_dir, 'ensemble', 'ensemble_report_v_{}.csv'.format(species)))
         
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
