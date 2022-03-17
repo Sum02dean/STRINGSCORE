@@ -2,7 +2,7 @@ import sys
 import os
 from string_utils import *
 from collections import Counter as Counter
-import numpy as np 
+import numpy as np
 import pandas as pd
 import argparse
 import sklearn
@@ -15,24 +15,22 @@ if USE_ARGPASE:
     parser = argparse.ArgumentParser(description='Pre-proccessor')
 
     parser.add_argument('-sid', '--species_id', type=str, metavar='',
-                    required=True, default='511145 9606 4932', help="ids of species to include, sepr=' '")
+                        required=True, default='511145 9606 4932', help="ids of species to include, sepr=' '")
 
     parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
                         required=True, default=True, help='if True, drops homology feature')
-   
+
     parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
-                    required=True, default=4, help='factor increase in neg obs compared to pos obs')
+                        required=True, default=4, help='factor increase in neg obs compared to pos obs')
 
     parser.add_argument('-tr', '--test_ratio', type=float, metavar='',
-                    required=True, default=0.8, help='ratio to sample from train set to create test set')
-    
+                        required=True, default=0.8, help='ratio to sample from train set to create test set')
+
     parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
+                        required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
     parser.add_argument('-pp', '--pre_process', type=str, metavar='',
-                    required=True, default='False', help='to pre-process train and test splits')
-
-
+                        required=True, default='False', help='to pre-process train and test splits')
 
     # Collect command line args
     args = parser.parse_args()
@@ -52,7 +50,7 @@ else:
     output_dir = os.path.join('pre_processed_data', 'xgboost')
     neg_ratio = 4
     test_ratio = 0.10
-    
+
 
 # Map species ID to name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
@@ -67,7 +65,7 @@ if not isExist:
     print("{} directory created.".format(output_dir))
 
 for (species, species_name) in species_dict.items():
-    
+
     if species in species_id:
         # Execute data correction
         print("Pre-processing data for {}".format(species))
@@ -75,14 +73,18 @@ for (species, species_name) in species_dict.items():
         label_path = 'data/{}_labels.csv'.format(species_name)
         data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
         labels = pd.read_csv(label_path, index_col=False, header=None)
-        x, y, idx  = format_data(data, labels, drop_homology=drop_homology)
-        x['labels'] = y.labels
 
+        # Drop homology signal and protein names from features
+        x, y, idx = format_data(data, labels, drop_homology=drop_homology)
+        x['labels'] = y.labels
 
         # Generate and map COGS to protein pairs
         print("Generating COG groups...")
-        cog_map = create_cog_map(spec_kegg=data, species_id='{}.'.format(
-                            species))
+        cog_map = create_cog_map(
+            spec_kegg=data,
+            species_id='{}.'.format(species))
+
+        # Generate COG labels from COG maps
         x_cogs = generate_cog_labels(x, cog_map=cog_map)
         y_cogs = x_cogs.labels
         print("Splitting data based on COG exlusions...")
@@ -90,36 +92,35 @@ for (species, species_name) in species_dict.items():
 
         # All data
         x_all = copy.deepcopy(data)
-        x_all.drop(columns=['protein1', 'protein2', 'combined_score', 'homology'], inplace=True)
-        ind_all = ["and".join([data.protein1.values[i], data.protein2.values[i]]) 
-                for i in range(0, len(data.protein1))]
+        x_all.drop(columns=['protein1', 'protein2',
+                   'combined_score', 'homology'], inplace=True)
+        ind_all = ["and".join([data.protein1.values[i], data.protein2.values[i]])
+                   for i in range(0, len(data.protein1))]
         x_all['labels'] = labels.values
         x_all.index = ind_all
 
-
         if pre_process:
-
-            # Remove string cols
+            # Remove string columns
             cols = x_train.columns
             all_cols = x_all.columns
 
             # All data
             ind_all = x_all.index
-            all_labels = x_all['labels'] 
+            all_labels = x_all['labels']
             x_all.drop(columns=['labels'], inplace=True)
 
             # Train data
             ind_train = x_train.index
-            x_labels = x_train['labels'] 
+            x_labels = x_train['labels']
             x_cogs = x_train['cogs']
             x_train.drop(columns=['labels', 'cogs'], inplace=True)
 
             # Valid data
             ind_val = x_val.index
-            v_labels = x_val['labels'] 
+            v_labels = x_val['labels']
             v_cogs = x_val['cogs']
             x_val.drop(columns=['labels', 'cogs'], inplace=True)
-            
+
             # Scale the data
             ss = StandardScaler()
             x_train = pd.DataFrame(ss.fit_transform(x_train))
@@ -144,15 +145,20 @@ for (species, species_name) in species_dict.items():
             x_train.columns = cols
             x_val.columns = cols
             x_all.columns = all_cols
-           
 
         # Save the data to file
         print("Saving data to: {} ...".format(output_dir))
-        x_train.to_csv(os.path.join(output_dir, '{}_train.csv'.format(species_name)))
-        x_val.to_csv(os.path.join(output_dir, '{}_valid.csv'.format(species_name)))
-        x_all.to_csv(os.path.join(output_dir, '{}_all.csv'.format(species_name)))
+        x_train.to_csv(os.path.join(
+            output_dir,
+            '{}_train.csv'.format(species_name)))
+
+        x_val.to_csv(os.path.join(
+            output_dir,
+            '{}_valid.csv'.format(species_name)))
+
+        x_all.to_csv(os.path.join(
+            output_dir,
+            '{}_all.csv'.format(species_name)))
         print('\n')
 
 print("Finished pre-processing.")
-
-        

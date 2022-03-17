@@ -391,14 +391,8 @@ if USE_ARGPASE:
     parser.add_argument('-c', '--cogs', type=str, metavar='',
                         required=True, default=True, help='to split on cogs or not')
 
-    parser.add_argument('-cw', '--class_weight', type=float, metavar='',
-                        required=True, default=4, help='factor applied to positive predictions')
-
     parser.add_argument('-un', '--use_noise', type=str, metavar='',
                         required=True, default=False, help='if True, injects noise to X')
-
-    parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
-                        required=True, default=4, help='factor increase in neg obs compared to pos obs')
 
     parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
                         required=True, default=True, help='if True, drops homology feature')
@@ -409,29 +403,19 @@ if USE_ARGPASE:
     parser.add_argument('-o', '--output_dir', type=str, metavar='',
                         required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
-    parser.add_argument('-foi', '--use_foi', type=str, metavar='',
-                        required=True, default='False', help='make dot-plot on feature of interest')
-
     parser.add_argument('-ns', '--n_runs', type=int, metavar='',
                         required=True, default=3, help='number of randomised samplings')
-
-    parser.add_argument('-pp', '--pre_process', type=str, metavar='',
-                        required=True, default='False', help='to pre-process train and test splits')
 
     # Parse agrs
     FORMAT = True
     args = parser.parse_args()
     model_name = args.model_name
     use_cogs = True if args.cogs == 'True' else False
-    weights = args.class_weight
     use_noise = True if args.use_noise == 'True' else False
-    neg_ratio = args.neg_ratio
     drop_homology = True if args.drop_homology == 'True' else False
     species_id = args.species_id
     output_dir = os.path.join(args.output_dir, model_name)
-    use_foi = True if args.use_foi == 'True' else False
     n_runs = args.n_runs
-    pre_process = True if args.pre_process == 'True' else False
     print('Running script with the following args:\n', args)
     print('\n')
 
@@ -439,15 +423,11 @@ else:
     # Define defaults without using Argparse
     model_name = 'nn_model_0'
     use_cogs = False
-    weights = 1
     use_noise = True
-    neg_ratio = 1
     drop_homology = True
     species_id = '511145'
     output_dir = os.path.join('benchmark/cog_predictions', model_name)
-    use_foi = False
     n_runs = 1
-    pre_process = False
 
 # Just to hide ugly code
 
