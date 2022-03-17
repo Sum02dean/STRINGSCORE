@@ -123,7 +123,7 @@ def combine_ensemble_reports(df_list, protein_names):
     return x
 
 
-def run_pipeline(x, params, scale=False, weights=None, cogs=True, train_ratio=0.8, noise=False, n_runs=3, run_cv=False, verbose_eval=True):
+def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
     """Runs the entire modeling process, pre-processing has now been migrated to src/pre_process.py.
 
     :param data: x-data containing 'labels' and 'cogs' columns
@@ -131,12 +131,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True, train_ratio=0.
 
     :param params: model hyper-parameter dictionary
     :type param: dict
-
-    :param scale: if True,  scales inputs in range [0,1], defaults to False
-    :type scale: bool, optional
-
-    :param weights: if provided, upscales the positive class importance during training, defaults to None
-    :type weights: float, optional
 
     :param cogs: if True, train and test are split on COG observations, defaults to True
     :type cogs: bool, optional
@@ -146,10 +140,6 @@ def run_pipeline(x, params, scale=False, weights=None, cogs=True, train_ratio=0.
 
     :param noise: if True, injects noise term to specified features, defaults to False
     :type noise: bool, optional
-
-    :param neg_ratio: the proportion of negative-positive samples, defaults to 1
-    :type neg_ratio: int, optional
-
 
     :return: Returns an output dict containing key information.
     :rtype: dict
@@ -388,9 +378,11 @@ for (species, species_name) in species_dict.items():
         a = copy.deepcopy(all_data)
         v = copy.deepcopy(valid_data)
 
+        # Run and time the model
         t1 = time.time()
-        output = run_pipeline(x=x, cogs=use_cogs,
-                              params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_runs)
+        output = run_pipeline(
+            x=x, cogs=use_cogs, params=params,
+            weights=weights, noise=use_noise)
         t2 = time.time()
         print("Finished training in {}".format(t2 - t1))
 

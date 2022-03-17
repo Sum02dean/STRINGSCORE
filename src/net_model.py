@@ -6,7 +6,7 @@ import sklearn
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
-from sklearn.preprocessing import StandardScaler    
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
 
@@ -31,75 +31,94 @@ class BinaryClassification(nn.Module):
 
         :param input_dim: the number of input units (features), defaults to 11
         :type input_dim: int, optional.
-        
+
         :param hidden_dim: each element value gives the number of neurons per layer,
-                           while the len(hidden_sim) signifies the number of layers, defaults to [64]
+                           while the len(hidden_sim) signifies the number of layers, defaults to [11]
         :type hidden_dim: list, optional.
-        
+
         :param output_dim: the number of outputs expected (1 for binary classification), defaults to 1
         :type output_dim: int, optional.
         """
-        super(BinaryClassification, self).__init__()       
-        
+        super(BinaryClassification, self).__init__()
+
         # Define field attributes
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.layers = nn.ModuleList()
 
-
         # If we are only interested in a network with a single hidden layer
         if len(self.hidden_dim) == 1:
-          self.hidden_dim = hidden_dim[0]
-          self.input_layer = nn.Linear(self.input_dim, self.hidden_dim)
-          self.relu_1 = nn.ReLU()
-          self.batch_norm_1 = nn.BatchNorm1d(self.hidden_dim)
-          self.hidden_layer = nn.Linear(self.hidden_dim, self.hidden_dim) 
-          self.relu_2 = nn.ReLU()
-          self.batch_norm_2 = nn.BatchNorm1d(self.hidden_dim)
-          self.output_layer = nn.Linear(self.hidden_dim, self.output_dim)
-          
-          # Chain all layers together (except output)
-          all_layers = [self.input_layer, self.relu_1, self.batch_norm_1,
-                        self.hidden_layer, self.relu_2, self.batch_norm_2]
-          self.layers += [x for x in all_layers]
- 
-        elif len(self.hidden_dim) > 1:
-          self.chained_dims = pairwise([self.hidden_dim[0]] + self.hidden_dim)
-          self.input_layer = nn.Linear(self.input_dim, self.hidden_dim[0])
-          self.relu_1 = nn.ReLU()
-          self.batch_norm_1 = nn.BatchNorm1d(self.hidden_dim[0])
-          self.output_layer = nn.Linear(self.hidden_dim[-1], self.output_dim)
-          
-          # Chain all hidden_dims sequentially - add to ModuleList
-          self.layers.append(self.input_layer)
-          self.layers.append(self.relu_1)
-          self.layers.append(self.batch_norm_1)
+            self.hidden_dim = hidden_dim[0]
+            self.input_layer = nn.Linear(self.input_dim, self.hidden_dim)
+            self.relu_1 = nn.ReLU()
+            self.batch_norm_1 = nn.BatchNorm1d(self.hidden_dim)
+            self.hidden_layer = nn.Linear(self.hidden_dim, self.hidden_dim)
+            self.relu_2 = nn.ReLU()
+            self.batch_norm_2 = nn.BatchNorm1d(self.hidden_dim)
+            self.output_layer = nn.Linear(self.hidden_dim, self.output_dim)
 
-          for _, (h_in, h_out) in enumerate(self.chained_dims):
-            hidden_layer = nn.Linear(h_in, h_out)
-            self.layers.append(hidden_layer)
-            self.layers.append(nn.ReLU())
-            self.layers.append(nn.BatchNorm1d(h_out))
-          
+            # Chain all layers together (except output)
+            all_layers = [self.input_layer, self.relu_1, self.batch_norm_1,
+                          self.hidden_layer, self.relu_2, self.batch_norm_2]
+            self.layers += [x for x in all_layers]
+
+        elif len(self.hidden_dim) > 1:
+            self.chained_dims = pairwise(
+                [self.hidden_dim[0]] + self.hidden_dim)
+            self.input_layer = nn.Linear(self.input_dim, self.hidden_dim[0])
+            self.relu_1 = nn.ReLU()
+            self.batch_norm_1 = nn.BatchNorm1d(self.hidden_dim[0])
+            self.output_layer = nn.Linear(self.hidden_dim[-1], self.output_dim)
+
+            # Chain all hidden_dims sequentially - add to ModuleList
+            self.layers.append(self.input_layer)
+            self.layers.append(self.relu_1)
+            self.layers.append(self.batch_norm_1)
+
+            for _, (h_in, h_out) in enumerate(self.chained_dims):
+                hidden_layer = nn.Linear(h_in, h_out)
+                self.layers.append(hidden_layer)
+                self.layers.append(nn.ReLU())
+                self.layers.append(nn.BatchNorm1d(h_out))
+
         # Optional dropout usage
         self.dropout = nn.Dropout(p=0.02)
 
     def forward(self, inputs):
-        
+        """Computes the forward pass of the network
+
+        :param inputs: batched data comin from dataloader
+        :type inputs: numpy array
+        :return: neural network logit output
+        :rtype: float tensor
+        """
+
         dropout = False
         x = inputs
         for layer in self.layers:
             x = layer(x)
-        
+
         # Final outputs
         if dropout:
             x = self.dropout(x)
         x = self.output_layer(x)
         return x
 
+
 def train_network(params, x_train, y_train):
-    
+    """ Train the neural networok
+
+    :param params: Parameters used for the neural network model see definitions below
+    :type params: dictionary
+    :param x_train: features to train on 
+    :type x_train: pandas.core.DataFrame
+    :param y_train: grounth truth observations
+    :type y_train: 1-dimensional array
+    :return: a fully trained neural network 
+    :rtype: pytorch neural network model
+    """
+
     # Grab parameters
     epochs = params['epochs']
     criterion = params['criterion']
@@ -107,14 +126,17 @@ def train_network(params, x_train, y_train):
     optimizer = params['optimizer']
     to_shuffle = params['to_shuffle']
 
+    # Balance the dataset
     balance = False
     if balance:
         d_train = dict(C(y_train.values))
         x_train['labels'] = y_train.values
-        x_train = x_train.groupby('labels').apply(lambda x: x.sample(n=d_train[1], replace=False)).reset_index(drop=True)
+        x_train = x_train.groupby('labels').apply(
+            lambda x: x.sample(
+                n=d_train[1], replace=False)).reset_index(drop=True)
         y_train = x_train['labels']
         x_train.drop(columns='labels', inplace=True)
-    
+
     # Generate train tensors
     y_tensor_train = torch.FloatTensor(y_train.values)
     x_tensor_train = torch.FloatTensor(x_train.values)
@@ -122,54 +144,70 @@ def train_network(params, x_train, y_train):
     # Establish train data-loader
     to_shuffle = True
     train_tensor = data_utils.TensorDataset(x_tensor_train, y_tensor_train)
-    train_loader = data_utils.DataLoader(train_tensor, batch_size=len(y_train), shuffle=to_shuffle)
-    
+    train_loader = data_utils.DataLoader(
+        train_tensor, batch_size=len(y_train), shuffle=to_shuffle)
+
     # Train loop
     net.train()
-    for e in range(1, epochs+1):
+    for e in range(1, epochs + 1):
         epoch_loss = 0
         epoch_acc = 0
         for X_batch, y_batch in train_loader:
-            
+
             # Grab data
             X_batch, y_batch = X_batch, y_batch
             optimizer.zero_grad()
-            
+
             # Predict
             y_pred = net(X_batch)
             loss = criterion(y_pred, y_batch.unsqueeze(1))
             acc = binary_acc(y_pred, y_batch.unsqueeze(1))
             loss.backward()
-            
+
             # Step
             optimizer.step()
             epoch_loss += loss.item()
             epoch_acc += acc.item()
-            
-        print(f'Epoch {e+0:03}: | Loss: {epoch_loss/len(train_loader):.5f} | Acc: {epoch_acc/len(train_loader):.3f}')
+
+        print(
+            f'Epoch {e+0:03}: | Loss: {epoch_loss/len(train_loader):.5f} | Acc: {epoch_acc/len(train_loader):.3f}')
     return net
 
+
 def predict(net, x_test, y_test):
+    """Computes neural network predictions on test data
+
+    :param net: neural network object
+    :type net: model object
+    :param x_test: test features
+    :type x_test: pandas.core.DataFra
+    :param y_test: test labels
+    :type y_test: pandas.core.series or np.array
+    :return: network, labels, predictions, predicted probabilities
+    :rtype: object, list, list, list
+    """
 
     # Establish data-loader
     to_shuffle = True
-        # Generate train tensors
+
+    # Generate train tensors
     y_tensor_test = torch.FloatTensor(y_test.values)
     x_tensor_test = torch.FloatTensor(x_test.values)
-        
-    # Create the data loader
-    to_shuffle = False
-    test_tensor = data_utils.TensorDataset(x_tensor_test, y_tensor_test)
-    test_loader = data_utils.DataLoader(test_tensor, batch_size=len(y_test), shuffle=to_shuffle)
 
+    # Create the test data loader
+    to_shuffle = False
+    test_tensor = data_utils.TensorDataset(
+        x_tensor_test, y_tensor_test)
+
+    test_loader = data_utils.DataLoader(
+        test_tensor, batch_size=len(y_test), shuffle=to_shuffle)
 
     # Make predicitions
     y = []
     y_hat = []
     y_probas = []
 
-    # since we're not training, we don't need to calculate the gradients for our outputs
-    net.eval()
+    # Don't backpropogate loss during eval
     with torch.no_grad():
         for i, data in enumerate(test_loader, 0):
             inputs, labels = data
@@ -177,17 +215,19 @@ def predict(net, x_test, y_test):
             logits = net(inputs)
             probas = torch.sigmoid(logits)
             outputs = torch.round(probas)
+
+            # Collect the outputs across all baches
             y_hat.append(outputs.numpy())
             y.append(labels.numpy())
             y_probas.append(probas.numpy())
 
+    # Reformat the batched predictions
     y_hat = [a.squeeze().tolist() for a in y_hat][0]
     y = [a.squeeze().tolist() for a in y][0]
     return net, y, y_hat, y_probas
 
-def run_pipeline(x, params, scale=False, weights=None, 
-                cogs=True, train_ratio=0.8, noise=False, n_runs=3):
-                
+
+def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
     """Runs the entire modeling process, pre-processing has now been migrated to src/pre_process.py.
 
     :param data: x-data containing 'labels' and 'cogs' columns
@@ -195,12 +235,6 @@ def run_pipeline(x, params, scale=False, weights=None,
 
     :param params: model hyper-parameter dictionary
     :type param: dict
-
-    :param scale: if True,  scales inputs in range [0,1], defaults to False
-    :type scale: bool, optional
-
-    :param weights: if provided, upscales the positive class importance during training, defaults to None
-    :type weights: float, optional
 
     :param cogs: if True, train and test are split on COG observations, defaults to True
     :type cogs: bool, optional
@@ -210,16 +244,16 @@ def run_pipeline(x, params, scale=False, weights=None,
 
     :param noise: if True, injects noise term to specified features, defaults to False
     :type noise: bool, optional
-    
+
     :return: Returns an output dict containing key information.
     :rtype: dict
     """
 
     print("Beginning pipeline...")
-    test_ratio = 1-train_ratio
+    test_ratio = 1 - train_ratio
 
     # Split the data
-    train_splits  = []
+    train_splits = []
     test_splits = []
     models = []
     predictions = []
@@ -227,7 +261,7 @@ def run_pipeline(x, params, scale=False, weights=None,
     accuracies = []
 
     # Pre-allocate the datasets
-    for i in range(1, n_runs+1):
+    for i in range(1, n_runs + 1):
 
         if cogs:
             # Stratify data on the ortholog groups
@@ -245,7 +279,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         else:
             # Don't stratify on orthologs and sample uniformly
             x_train, x_test, y_train, y_test = model_splits(
-                x, x.labels, test_ratio=test_ratio)   
+                x, x.labels, test_ratio=test_ratio)
 
         # Drop the labels from x-train and x-test
         x_train.drop(columns=['labels', 'cogs'], inplace=True)
@@ -259,10 +293,9 @@ def run_pipeline(x, params, scale=False, weights=None,
     print("Complete with no errors")
     print('Done\n')
 
-
     # Train across n-unique subsets of the data
     for i in range(len(train_splits)):
-        print("Training on sampling run {}".format(i+1))
+        print("Training on sampling run {}".format(i + 1))
         x_train, y_train = train_splits[i]
         x_test, y_test = test_splits[i]
 
@@ -286,64 +319,68 @@ def run_pipeline(x, params, scale=False, weights=None,
 
             x_test = x_test.apply(lambda x: inject_noise(
                 x, mu=mu, sigma=sigma) if x.name in perturb else x)
-        
 
         # Make a one time prediction for each of the splits
         input_size = params['input_size']
         hidden_size = params['hidden_size']
         output_size = params['output_size']
-    
-        net = BinaryClassification(input_dim=input_size, hidden_dim=[hidden_size], output_dim=output_size)
+
+        net = BinaryClassification(input_dim=input_size, hidden_dim=[
+                                   hidden_size], output_dim=output_size)
         params['net'] = net
-        
-        print('Network Architecture: \n',net)
+
+        print('Network Architecture: \n', net)
         net = train_network(params=params, x_train=x_train, y_train=y_train)
         print("Predicting on test data")
-        net, y, y_hat, y_probas = predict(net=net, x_test=x_test, y_test=y_test)
-        
+        net, y, y_hat, y_probas = predict(
+            net=net, x_test=x_test, y_test=y_test)
+
         # Collect the model specific data
         models.append(net)
         probabilities.append(y_probas)
         predictions.append(y_hat)
 
     output_dict = {
-            'probabilities': probabilities,
-            'classifier': models,
-            'train_splits': train_splits,
-            'test_splits': test_splits
-            }
+        'probabilities': probabilities,
+        'classifier': models,
+        'train_splits': train_splits,
+        'test_splits': test_splits
+    }
 
     return output_dict
 
+
 def mean_probas(x_test, y_test, models):
 
-        # Initialise final results (mean_probas)
-        n_rows = np.shape(y_test)[0]
-        n_cols = len(models)
-        mean_probas = np.zeros(shape=(n_rows, n_cols))
-        
-        # Loop over all models, make predictions across K model, compute average.
-        for i in range(len(models)):
-            net, y, y_hat, probas = predict(models[i], x_test, y_test)
-            mean_probas[:, i] = probas
+    # Initialise final results (mean_probas)
+    n_rows = np.shape(y_test)[0]
+    n_cols = len(models)
+    mean_probas = np.zeros(shape=(n_rows, n_cols))
 
-        # Returns the mean predictions for all K models
-        mean_probas = mean_probas.mean(axis=1)
-        mean_probas = [(x, x) for x in mean_probas]
-        return mean_probas
+    # Loop over all models, make predictions across K model, compute average.
+    for i in range(len(models)):
+        net, y, y_hat, probas = predict(models[i], x_test, y_test)
+        mean_probas[:, i] = probas
+
+    # Returns the mean predictions for all K models
+    mean_probas = mean_probas.mean(axis=1)
+    mean_probas = [(x, x) for x in mean_probas]
+    return mean_probas
+
 
 def binary_acc(y_pred, y_test):
     y_pred_tag = torch.round(torch.sigmoid(y_pred))
 
     correct_results_sum = (y_pred_tag == y_test).sum().float()
-    acc = correct_results_sum/y_test.shape[0]
+    acc = correct_results_sum / y_test.shape[0]
     acc = torch.round(acc * 100)
     return acc
 
 ###############################################################################################
 # START SCRIPT
 ###############################################################################################
-   
+
+
 # Extract input variables from Argparse
 USE_ARGPASE = True
 if USE_ARGPASE:
@@ -374,15 +411,13 @@ if USE_ARGPASE:
 
     parser.add_argument('-foi', '--use_foi', type=str, metavar='',
                         required=True, default='False', help='make dot-plot on feature of interest')
-    
+
     parser.add_argument('-ns', '--n_runs', type=int, metavar='',
                         required=True, default=3, help='number of randomised samplings')
-    
-    
+
     parser.add_argument('-pp', '--pre_process', type=str, metavar='',
-                    required=True, default='False', help='to pre-process train and test splits')
-    
-    
+                        required=True, default='False', help='to pre-process train and test splits')
+
     # Parse agrs
     FORMAT = True
     args = parser.parse_args()
@@ -415,154 +450,165 @@ else:
     pre_process = False
 
 # Just to hide ugly code
-HIDE = True
-if HIDE:
-    # Check whether the specified path exists or not
-    isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
-    if not isExist:
-        # Create it
-        os.makedirs(os.path.join(output_dir, 'ensemble'))
-        print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
 
-    # Specify link paths
-    full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
-    full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
+# Check whether the specified path exists or not
+isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
+if not isExist:
+    # Create it
+    os.makedirs(os.path.join(output_dir, 'ensemble'))
+    print("{} directory created.".format(
+        os.path.join(output_dir, 'ensemble')))
 
-    # Map species ID to  name
-    species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
-    full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
-    full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
+# Specify link paths
+full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-    # Define model parameters
-    to_shuffle = True
-    batch_size = 50
-    epochs = 100
-    input_size = 12 if drop_homology else 13
-    hidden_size = 200
-    output_size = 1
-    learning_rate = 0.001 # <-- best: 0.001
-    
+# Map species ID to  name
+species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
+full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-    # Store parameters
-    params = {
-        'epochs':epochs,
-        'input_size':input_size,
-        'output_size':output_size,
-        'hidden_size':hidden_size,
-        'to_shuffle': to_shuffle
-        }
+# Define model parameters
+to_shuffle = True
+batch_size = 50
+epochs = 100
+input_size = 12 if drop_homology else 13
+hidden_size = 200
+output_size = 1
+learning_rate = 0.001  # <-- best: 0.001
 
-    for (species, species_name) in species_dict.items():
-        if species in species_id:
+# Store parameters
+params = {
+    'epochs': epochs,
+    'input_size': input_size,
+    'output_size': output_size,
+    'hidden_size': hidden_size,
+    'to_shuffle': to_shuffle
+}
 
-            print("Computing for {}".format(species))
-            spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-            kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
+for (species, species_name) in species_dict.items():
+    if species in species_id:
 
-            # Load in pre-defined train and validate sets
-            train_path = "pre_processed_data/scaled/{}_train.csv".format(species_name)
-            valid_path = "pre_processed_data/scaled/{}_valid.csv".format(species_name)
-            all_path = 'pre_processed_data/scaled/{}_all.csv'.format(species_name)    
+        print("Computing for {}".format(species))
+        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        kegg_data = pd.read_csv(
+            spec_path, header=0, sep=' ', low_memory=False)
 
-            
-            # Load train, test, valid data
-            train_data = pd.read_csv(train_path, header=0, low_memory=False, index_col=0)
-            valid_data = pd.read_csv(valid_path, header=0, low_memory=False, index_col=0)
-            all_data = pd.read_csv(all_path, header=0, low_memory=False, index_col=0)
+        # Load in pre-defined train and validate sets
+        train_path = "pre_processed_data/scaled/{}_train.csv".format(
+            species_name)
+        valid_path = "pre_processed_data/scaled/{}_valid.csv".format(
+            species_name)
+        all_path = 'pre_processed_data/scaled/{}_all.csv'.format(
+            species_name)
 
-            # Load in all data even without KEGG memberships
-            spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-            x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
+        # Load train, test, valid data
+        train_data = pd.read_csv(
+            train_path, header=0, low_memory=False, index_col=0)
+        valid_data = pd.read_csv(
+            valid_path, header=0, low_memory=False, index_col=0)
+        all_data = pd.read_csv(
+            all_path, header=0, low_memory=False, index_col=0)
 
-            # Remove regference to the original data 
-            x = copy.deepcopy(train_data)
-            a = copy.deepcopy(all_data)
-            v = copy.deepcopy(valid_data)
+        # Load in all data even without KEGG memberships
+        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        x_data = pd.read_csv(spec_path, header=0,
+                             sep=' ', low_memory=False)
 
-            t1 = time.time()
-            output = run_pipeline(x=x,cogs=use_cogs,
-                                params=params, weights=weights, noise=use_noise, n_runs=n_runs)
-            t2 = time.time()
-            print("Finished training in {}".format(t2-t1))
+        # Remove regference to the original data
+        x = copy.deepcopy(train_data)
+        a = copy.deepcopy(all_data)
+        v = copy.deepcopy(valid_data)
 
+        # Run and time the model
+        t1 = time.time()
+        output = run_pipeline(x=x, cogs=use_cogs,
+                              params=params, weights=weights, noise=use_noise)
+        t2 = time.time()
+        print("Finished training in {}".format(t2 - t1))
 
-        ###############################################################################################
-            # Make predictions
-        ###############################################################################################
+    ###############################################################################################
+        # Make predictions
+    ###############################################################################################
 
-            print("Making inference")
-            # Grab classifier(s)
-            classifiers = output['classifier'][-1]
+        # Grab classifier(s)
+        print("Making inference")
+        classifiers = output['classifier'][-1]
 
-            # Remove COG labels from the data 
-            # x.drop(columns=['labels', 'cogs'], inplace=True)
-            x = a
-            x_labels = x['labels']
-            v_labels = v['labels']
+        # Remove COG labels from the data
+        # x.drop(columns=['labels', 'cogs'], inplace=True)
 
-            x.drop(columns=['labels'], inplace=True)
-            v.drop(columns=['labels', 'cogs'], inplace=True)
+        x = a
+        x_labels = x['labels']
+        v_labels = v['labels']
 
-            # Get probabilities
-            _, xy, xy_hat, x_probas = predict(net=classifiers, x_test=x, y_test=x_labels)
-            x_probas = [float(x) for x in x_probas[0]]
-            x_probas = [[x,x] for x in x_probas]
+        x.drop(columns=['labels'], inplace=True)
+        v.drop(columns=['labels', 'cogs'], inplace=True)
 
-            _, vy, vy_hat, v_probas = predict(net=classifiers, x_test=v, y_test=v_labels)
-            v_probas = [float(x) for x in v_probas[0]]
-            v_probas = [[x,x] for x in v_probas]
+        # Get test probabilities
+        _, xy, xy_hat, x_probas = predict(
+            net=classifiers, x_test=x, y_test=x_labels)
 
-            
-            # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-            combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
-            combined_scores = pd.read_csv(combined_score_file, header=None, sep='\t')
+        # Reformat test predictions
+        x_probas = [float(x) for x in x_probas[0]]
+        x_probas = [[x, x] for x in x_probas]
 
+        # Get validation probabilities
+        _, vy, vy_hat, v_probas = predict(
+            net=classifiers, x_test=v, y_test=v_labels)
 
-            # Save data compatible for Damaians benchmark script (all data)
-            x_outs = save_outputs_benchmark(x=x, probas=x_probas,  sid=species,
-                                            direc=output_dir, model_name=model_name + '.train_data')
-            
-            v_outs = save_outputs_benchmark(x=v, probas=v_probas,  sid=species,
-                                            direc=output_dir, model_name=model_name + '.hold_out_data')
+        # Reformat validation predictions
+        v_probas = [float(x) for x in v_probas[0]]
+        v_probas = [[x, x] for x in v_probas]
 
+        # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
+        combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
+        combined_scores = pd.read_csv(
+            combined_score_file, header=None, sep='\t')
 
-            # Get the intersection benchmark plot 
-            filtered_string_score_x = get_interesction(target=x_outs, reference=combined_scores)
-            filtered_string_score_v = get_interesction(target=v_outs, reference=combined_scores)
+        # Save data compatible for Damaian's benchmark script (all data)
+        x_outs = save_outputs_benchmark(x=x, probas=x_probas, sid=species,
+                                        direc=output_dir, model_name=model_name + '.train_data')
 
-            data_intersections = {
+        v_outs = save_outputs_benchmark(x=v, probas=v_probas, sid=species,
+                                        direc=output_dir, model_name=model_name + '.hold_out_data')
+
+        # Get the test intersection with benchmark plot - to make sure all ROC curves have equal points
+        filtered_string_score_x = get_interesction(
+            target=x_outs, reference=combined_scores)
+
+        # Get the validation intersection with benchmark plot - to make sure all ROC curves have equal points
+        filtered_string_score_v = get_interesction(
+            target=v_outs, reference=combined_scores)
+
+        # Collect all subset data
+        data_intersections = {
             'train_data': filtered_string_score_x,
             'hold_out_data': filtered_string_score_v}
 
-            t2 = time.time()
-            print("Finished predictions in {}".format(t2-t1))
+        # Save all the models
+        t2 = time.time()
+        print("Finished predictions in {}".format(t2 - t1))
+        print('Saving model(s)')
+        for i, model in enumerate(output['classifier']):
+            torch.save(model.state_dict(), os.path.join(
+                output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
 
-            print('Saving model(s)')
-            for i, model in enumerate(output['classifier']):
-                torch.save(model.state_dict(), os.path.join(output_dir, 'ensemble', 'model_{}_{}'.format(i, species)))
+        for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
 
+            # Save above and generate JSON files (all data)
+            save_dir = os.path.join(
+                output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
 
-            for i, (file_name, filtered_file) in enumerate(data_intersections.items()):
-                
-                # Save data compatible for Damaians benchmark script (all data)
-                save_dir = os.path.join(
-                        output_dir, '{}.{}.combined.v11.5.tsv'.format(file_name, species))
+            filtered_file.to_csv(
+                save_dir, header=False, index=False, sep='\t')
 
-                filtered_file.to_csv(
-                        save_dir, header=False, index=False, sep='\t')
+            json_report = generate_quality_json(
+                model_name=model_name, direct=output_dir, sid=species, alt=file_name)
 
-                                                
-                json_report = generate_quality_json(
-                        model_name=model_name, direct=output_dir, sid=species, alt=file_name)
-
-
-                # Call Damians benchmark script on all of train - test - valid
-                print("Computing summary statistics for {} data.".format(file_name))
-                command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
-                    ["{}/quality_full_{}.{}.{}.json".format(
-                        output_dir, model_name, file_name, species)]
-                out = subprocess.run(command)
-        
-
-        
-                
+            # Call Damians benchmark script on data splits
+            print("Computing summary statistics for {} data.".format(file_name))
+            command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+                ["{}/quality_full_{}.{}.{}.json".format(
+                    output_dir, model_name, file_name, species)]
+            out = subprocess.run(command)
