@@ -1,17 +1,19 @@
 import os
 import pandas as pd
 import xgboost as xgb
-from collections import Counter as C
 import time
 import argparse
 import subprocess
-from string_utils import *
 import copy
-
+import warnings
+from collections import Counter as C
+from string_utils import *
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def run_pipeline(x, params, scale=False, weights=None,
                  cogs=True, train_ratio=0.8, noise=False,
                  n_runs=3, run_cv=False, verbose_eval=True):
+
     """Runs the entire modeling process, pre-processing has now been migrated to src/pre_process.py.
 
     :param data: x-data containing 'labels' and 'cogs' columns
@@ -126,7 +128,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         if run_cv:
             # Perform cross-validation on each of the differential splits
             dtrain = xgb.DMatrix(x_train, label=y_train)
-            cv_results = xgb.cv(dtrain=dtrain, params=params, nfold=5,
+            _ = xgb.cv(dtrain=dtrain, params=params, nfold=5,
                                 metrics="auc", as_pandas=True, stratified=True,
                                 verbose_eval=verbose_eval)
 
@@ -232,75 +234,65 @@ def combine_ensemble_reports(df_list, protein_names):
 
 
 # Extract input variables from Argparse
-USE_ARGPASE = True
-if USE_ARGPASE:
-    parser = argparse.ArgumentParser(description='XGBoost')
-    parser.add_argument('-n', '--model_name', type=str, metavar='',
-                        required=True, default='model_0', help='name of the model')
 
-    parser.add_argument('-c', '--cogs', type=str, metavar='',
-                        required=True, default=True, help='to split on cogs or not')
+parser = argparse.ArgumentParser(description='XGBoost')
+parser.add_argument('-n', '--model_name', type=str, metavar='',
+                    required=True, default='model_0', help='name of the model')
 
-    parser.add_argument('-cw', '--class_weight', type=float, metavar='',
-                        required=True, default=4, help='factor applied to positive predictions')
+parser.add_argument('-c', '--cogs', type=str, metavar='',
+                    required=True, default=True, help='to split on cogs or not')
 
-    parser.add_argument('-un', '--use_noise', type=str, metavar='',
-                        required=True, default=False, help='if True, injects noise to X')
+parser.add_argument('-cw', '--class_weight', type=float, metavar='',
+                    required=True, default=4, help='factor applied to positive predictions')
 
-    parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
-                        required=True, default=4, help='factor increase in neg obs compared to pos obs')
+parser.add_argument('-un', '--use_noise', type=str, metavar='',
+                    required=True, default=False, help='if True, injects noise to X')
 
-    parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
-                        required=True, default=True, help='if True, drops homology feature')
+parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
+                    required=True, default=4, help='factor increase in neg obs compared to pos obs')
 
-    parser.add_argument('-sid', '--species_id', type=str, metavar='',
-                        required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
+parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
+                    required=True, default=True, help='if True, drops homology feature')
 
-    parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                        required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
+parser.add_argument('-sid', '--species_id', type=str, metavar='',
+                    required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
 
-    parser.add_argument('-foi', '--use_foi', type=str, metavar='',
-                        required=True, default='False', help='make dot-plot on feature of interest')
+parser.add_argument('-o', '--output_dir', type=str, metavar='',
+                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
-    parser.add_argument('-ns', '--n_samples', type=int, metavar='',
-                        required=True, default=3, help='number of randomised samplings')
+parser.add_argument('-i', '--input_dir', type=str, metavar='',
+                    required=True, default='pre_processed_data/scaled/', help='directory for pre-processed data')
 
-    parser.add_argument('-pp', '--pre_process', type=str, metavar='',
-                        required=True, default='False', help='to pre-process train and test splits')
+parser.add_argument('-foi', '--use_foi', type=str, metavar='',
+                    required=True, default='False', help='make dot-plot on feature of interest')
 
-    # To format data
-    FORMAT = True
+parser.add_argument('-ns', '--n_samples', type=int, metavar='',
+                    required=True, default=3, help='number of randomised samplings')
 
-    # Parse args
-    args = parser.parse_args()
-    model_name = args.model_name
-    use_cogs = True if args.cogs == 'True' else False
-    weights = args.class_weight
-    use_noise = True if args.use_noise == 'True' else False
-    neg_ratio = args.neg_ratio
-    drop_homology = True if args.drop_homology == 'True' else False
-    species_id = args.species_id
-    output_dir = os.path.join(args.output_dir, model_name)
-    use_foi = True if args.use_foi == 'True' else False
-    n_samples = args.n_samples
-    pre_process = True if args.pre_process == 'True' else False
+parser.add_argument('-pp', '--pre_process', type=str, metavar='',
+                    required=True, default='False', help='to pre-process train and test splits')
 
-    print('Running script with the following args:\n', args)
-    print('\n')
+# To format data
+FORMAT = True
 
-else:
-    # Define defaults without using Argparse
-    model_name = 'model_0'
-    use_cogs = False
-    weights = 4
-    use_noise = True
-    neg_ratio = 4
-    drop_homology = True
-    species_id = '511145'
-    output_dir = os.path.join('benchmark/cog_predictions', model_name)
-    use_foi = False
-    pre_process = False
-    n_samples = 1
+# Parse args
+args = parser.parse_args()
+model_name = args.model_name
+use_cogs = True if args.cogs == 'True' else False
+weights = args.class_weight
+use_noise = True if args.use_noise == 'True' else False
+neg_ratio = args.neg_ratio
+drop_homology = True if args.drop_homology == 'True' else False
+species_id = args.species_id
+output_dir = os.path.join(args.output_dir, model_name)
+input_dir = os.path.join(args.input_dir)
+use_foi = True if args.use_foi == 'True' else False
+n_samples = args.n_samples
+pre_process = True if args.pre_process == 'True' else False
+
+print('Running script with the following args:\n', args)
+print('\n')
+
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
@@ -337,12 +329,12 @@ for (species, species_name) in species_dict.items():
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
         # Load in pre-defined train and validate sets
-        train_path = "pre_processed_data/script_test/{}_train.csv".format(
-            species_name)
-        valid_path = "pre_processed_data/script_test/{}_valid.csv".format(
-            species_name)
-        all_path = "pre_processed_data/script_test/{}_all.csv".format(
-            species_name)
+        train_path = os.path.join(input_dir, "{}_train.csv".format(
+            species_name))
+        valid_path = os.path.join(input_dir,"{}_valid.csv".format(
+            species_name))
+        all_path =  os.path.join(input_dir,"{}_all.csv".format(
+            species_name))
 
         # Load train, test, valid data
         train_data = pd.read_csv(train_path, header=0,
@@ -356,7 +348,7 @@ for (species, species_name) in species_dict.items():
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
         x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
-        # Remove regference to the original data  (uncomment as necessary)
+        # Remove reference to the original data  (uncomment as necessary)
         x = copy.deepcopy(train_data)
         a = copy.deepcopy(all_data)
         v = copy.deepcopy(valid_data)
@@ -376,8 +368,8 @@ for (species, species_name) in species_dict.items():
 
         # Remove COG labels from the data
         v.drop(columns=['labels', 'cogs'], inplace=True)
-        # x.drop(columns=['labels', 'cogs'], inplace=True)
-        x = a
+        # x.drop(columns=['labels', 'cogs'], inplace=True)                <-- uncomment to run ony on train data, else runs on all data
+        x = a                                                           # <-- comment to run ony on train data, else runs on all data
         x.drop(columns=['labels'], inplace=True)
 
         # Get ensemble probabilities

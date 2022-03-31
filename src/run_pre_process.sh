@@ -5,7 +5,7 @@
 --neg_ratio 4 \
 --drop_homology True \
 --test_ratio 0.10 \
---pre_process True
+--scale True
 
 # ecoli: 511145
 # human: 9606

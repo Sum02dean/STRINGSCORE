@@ -10,47 +10,36 @@ from sklearn.preprocessing import StandardScaler
 
 
 # Extract input variables from Argparse
-USE_ARGPASE = True
-if USE_ARGPASE:
-    parser = argparse.ArgumentParser(description='Pre-proccessor')
 
-    parser.add_argument('-sid', '--species_id', type=str, metavar='',
-                        required=True, default='511145 9606 4932', help="ids of species to include, sepr=' '")
+parser = argparse.ArgumentParser(description='Pre-proccessor')
 
-    parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
-                        required=True, default=True, help='if True, drops homology feature')
+parser.add_argument('-sid', '--species_id', type=str, metavar='',
+                    required=True, default='511145 9606 4932', help="ids of species to include, sepr=' '")
 
-    parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
-                        required=True, default=4, help='factor increase in neg obs compared to pos obs')
+parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
+                    required=True, default=True, help='if True, drops homology feature')
 
-    parser.add_argument('-tr', '--test_ratio', type=float, metavar='',
-                        required=True, default=0.8, help='ratio to sample from train set to create test set')
+parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
+                    required=True, default=4, help='factor increase in neg obs compared to pos obs')
 
-    parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                        required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
+parser.add_argument('-tr', '--test_ratio', type=float, metavar='',
+                    required=True, default=0.8, help='ratio to sample from train set to create test set')
 
-    parser.add_argument('-pp', '--pre_process', type=str, metavar='',
-                        required=True, default='False', help='to pre-process train and test splits')
+parser.add_argument('-o', '--output_dir', type=str, metavar='',
+                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
-    # Collect command line args
-    args = parser.parse_args()
-    species_id = args.species_id
-    drop_homology = True if args.drop_homology == 'True' else False
-    output_dir = os.path.join(args.output_dir)
-    neg_ratio = args.neg_ratio
-    test_ratio = args.test_ratio
-    pre_process = True if args.pre_process == 'True' else False
-    print("collected command-line args: {}".format(args))
+parser.add_argument('-s', '--scale', type=str, metavar='',
+                    required=True, default='False', help='to scale train and test splits')
 
-
-else:
-    # Define vars if not using command-line
-    species_id = '511145'
-    drop_homology = True
-    output_dir = os.path.join('pre_processed_data', 'xgboost')
-    neg_ratio = 4
-    test_ratio = 0.10
-
+# Collect command line args
+args = parser.parse_args()
+species_id = args.species_id
+drop_homology = True if args.drop_homology == 'True' else False
+output_dir = os.path.join(args.output_dir)
+neg_ratio = args.neg_ratio
+test_ratio = args.test_ratio
+scale = True if args.scale == 'True' else False
+print("collected command-line args: {}".format(args))
 
 # Map species ID to name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
@@ -59,6 +48,7 @@ full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(output_dir)
+
 if not isExist:
     # Create it
     os.makedirs(output_dir)
@@ -99,7 +89,7 @@ for (species, species_name) in species_dict.items():
         x_all['labels'] = labels.values
         x_all.index = ind_all
 
-        if pre_process:
+        if scale:
             # Remove string columns
             cols = x_train.columns
             all_cols = x_all.columns
