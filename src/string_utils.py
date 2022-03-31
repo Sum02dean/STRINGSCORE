@@ -1,4 +1,3 @@
-""" This is where I keep all of my functions for the STRING project """
 import os
 import pandas as pd
 import numpy as np

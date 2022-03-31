@@ -218,4 +218,3 @@ dependencies:
     - webencodings==0.5.1
     - xarray==0.20.2
     - xgboost==1.5.1
-prefix: /mnt/mnemo5/sum02dean/miniconda3/envs/string_score

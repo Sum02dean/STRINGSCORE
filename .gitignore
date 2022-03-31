@@ -7,6 +7,6 @@ src/ideas
 __pycache__/
 **/__pycache__
 **/.pytest_cache
-xgboost/
 src/pre_processed_data/
 damian_check/
+xgboost/
