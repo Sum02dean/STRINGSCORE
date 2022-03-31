@@ -382,54 +382,65 @@ def binary_acc(y_pred, y_test):
 
 
 # Extract input variables from Argparse
-USE_ARGPASE = True
-if USE_ARGPASE:
-    parser = argparse.ArgumentParser(description='bambi')
-    parser.add_argument('-n', '--model_name', type=str, metavar='',
-                        required=True, default='model_0', help='name of the model')
 
-    parser.add_argument('-c', '--cogs', type=str, metavar='',
-                        required=True, default=True, help='to split on cogs or not')
+parser = argparse.ArgumentParser(description='bambi')
+parser.add_argument('-n', '--model_name', type=str, metavar='',
+                    required=True, default='model_0', help='name of the model')
 
-    parser.add_argument('-un', '--use_noise', type=str, metavar='',
-                        required=True, default=False, help='if True, injects noise to X')
+parser.add_argument('-c', '--cogs', type=str, metavar='',
+                    required=True, default=True, help='to split on cogs or not')
 
-    parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
-                        required=True, default=True, help='if True, drops homology feature')
+parser.add_argument('-un', '--use_noise', type=str, metavar='',
+                    required=True, default=False, help='if True, injects noise to X')
 
-    parser.add_argument('-sid', '--species_id', type=str, metavar='',
-                        required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
+parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
+                    required=True, default=True, help='if True, drops homology feature')
 
-    parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                        required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
+parser.add_argument('-sid', '--species_id', type=str, metavar='',
+                    required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
 
-    parser.add_argument('-ns', '--n_runs', type=int, metavar='',
-                        required=True, default=3, help='number of randomised samplings')
+parser.add_argument('-o', '--output_dir', type=str, metavar='',
+                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
-    # Parse agrs
-    FORMAT = True
-    args = parser.parse_args()
-    model_name = args.model_name
-    use_cogs = True if args.cogs == 'True' else False
-    use_noise = True if args.use_noise == 'True' else False
-    drop_homology = True if args.drop_homology == 'True' else False
-    species_id = args.species_id
-    output_dir = os.path.join(args.output_dir, model_name)
-    n_runs = args.n_runs
-    print('Running script with the following args:\n', args)
-    print('\n')
+parser.add_argument('-ns', '--n_runs', type=int, metavar='',
+                    required=True, default=3, help='number of randomised samplings')
 
-else:
-    # Define defaults without using Argparse
-    model_name = 'nn_model_0'
-    use_cogs = False
-    use_noise = True
-    drop_homology = True
-    species_id = '511145'
-    output_dir = os.path.join('benchmark/cog_predictions', model_name)
-    n_runs = 1
 
-# Just to hide ugly code
+
+parser.add_argument('-bs', '--batch_size', type=int, metavar='',
+                    required=True, default=50, help='number of batches to use')
+
+parser.add_argument('-e', '--epochs', type=int, metavar='',
+                    required=True, default=100, help='number of epochs to complete')
+
+parser.add_argument('-hs', '--hidden_size', type=int, metavar='',
+                    required=True, default=200, help='amount of neurons in hidden layer')
+
+parser.add_argument('-lr', '--learnging_rate', type=int, metavar='',
+                    required=True, default=0.001, help='learning rate to apply to gradient update')
+
+# Parse agrs
+FORMAT = True
+args = parser.parse_args()
+model_name = args.model_name
+use_cogs = True if args.cogs == 'True' else False
+use_noise = True if args.use_noise == 'True' else False
+drop_homology = True if args.drop_homology == 'True' else False
+species_id = args.species_id
+output_dir = os.path.join(args.output_dir, model_name)
+n_runs = args.n_runs
+
+# ML args
+input_size = 12 if drop_homology else 13
+output_size = 1
+to_shuffle = True
+batch_size = args.batch_size
+epochs = args.epochs
+hidden_size = args.hidden_size
+learning_rate = args.learning_rate
+print('Running script with the following args:\n', args)
+print('\n')
+
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
@@ -448,14 +459,6 @@ species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
 full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
-# Define model parameters
-to_shuffle = True
-batch_size = 50
-epochs = 100
-input_size = 12 if drop_homology else 13
-hidden_size = 200
-output_size = 1
-learning_rate = 0.001  # <-- best: 0.001
 
 # Store parameters
 params = {
