@@ -34,15 +34,15 @@ Example of calling help for model args:
 python xgboost_model.py
 ```
 
-### Model Specific Outputs
-XGBoost outputs:
+### Model Output
+Outputs will be organised as such:
 ```
     models
     |_ _ output_directory
-    |     |_ _ model_name
-    |             |_ _ (plots and main results)
-    |_ _ensemble 
-          | _ _ (ensemble model data)
+          |_ _ model_name
+          |      |_ _ (plots and main results)
+          |_ _ensemble 
+                 |_ _ (ensemble model data)
 ```
 
 ### Hyper-parameter selection
@@ -53,31 +53,31 @@ XGBoost:
 | Parameter | Value |
 | ------ | ------ | 
 | n_samples |3|
-| max_depth | 15|
-| eta | 0.1|
+| max_depth |15|
+| eta |0.1|
 | objective | 'binary:logistic'|
-| alpha | 0.1|
-| lambda | 0.01|
-| subsample | 0.9|
-|colsample_bynode| 0.2|
+| alpha |0.1|
+| lambda |0.01|
+| subsample |0.9|
+|colsample_bynode|0.2|
 
 Bambi:
 | Parameter | Value |
 | ------ | ------ | 
-| n_runs | 3|
-| n_chains | 2|
-| n_draws | 1000|
-|n_tune| 3000|
-|family| bernouli|
+| n_runs |1|
+| n_chains |2|
+| n_draws |1000|
+|n_tune |3000|
+|family |bernouli|
 
 Neural Network (Pytorch):
 | Parameter | Value |
 | ------ | ------ | 
 | n_runs |3|
 | batch_size |50|
-| epochs | 100|
-|hidden_size| 200|
-|learning_rate| 0.001|
+| epochs |100|
+|hidden_size|200|
+|learning_rate|0.001|
 
 ### Models
 

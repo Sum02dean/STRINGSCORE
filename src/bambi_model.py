@@ -238,73 +238,62 @@ def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
 
 
 # Extract input variables from Argparse
-USE_ARGPASE = True
 
-if USE_ARGPASE:
-    parser = argparse.ArgumentParser(description='bambi')
-    parser.add_argument('-n', '--model_name', type=str, metavar='',
-                        required=True, default='model_0', help='name of the model')
+parser = argparse.ArgumentParser(description='bambi')
+parser.add_argument('-n', '--model_name', type=str, metavar='',
+                    required=True, default='model_0', help='name of the model')
 
-    parser.add_argument('-c', '--cogs', type=str, metavar='',
-                        required=True, default=True, help='to split on cogs or not')
+parser.add_argument('-c', '--cogs', type=str, metavar='',
+                    required=True, default=True, help='to split on cogs or not')
 
-    parser.add_argument('-un', '--use_noise', type=str, metavar='',
-                        required=True, default=False, help='if True, injects noise to X')
+parser.add_argument('-un', '--use_noise', type=str, metavar='',
+                    required=True, default=False, help='if True, injects noise to X')
 
-    parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
-                        required=True, default=True, help='if True, drops homology feature')
+parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
+                    required=True, default=True, help='if True, drops homology feature')
 
-    parser.add_argument('-sid', '--species_id', type=str, metavar='',
-                        required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
+parser.add_argument('-sid', '--species_id', type=str, metavar='',
+                    required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
 
-    parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                        required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
+parser.add_argument('-o', '--output_dir', type=str, metavar='',
+                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
-    parser.add_argument('-ns', '--n_runs', type=int, metavar='',
-                        required=True, default=3, help='number of randomised samplings')
+parser.add_argument('-i', '--input_dir', type=str, metavar='',
+                    required=True, default='pre_processed_data/scaled/', help='input directory for pre-processed data')
 
-    parser.add_argument('-nc', '--n_chains', type=int, metavar='',
-                        required=True, default=1000, help='number of chains')
+parser.add_argument('-ns', '--n_runs', type=int, metavar='',
+                    required=True, default=3, help='number of randomised samplings')
 
-    parser.add_argument('-nd', '--n_draws', type=int, metavar='',
-                        required=True, default=100, help='number of draws per chain')
+parser.add_argument('-nc', '--n_chains', type=int, metavar='',
+                    required=True, default=1000, help='number of chains')
 
-    parser.add_argument('-nt', '--n_tune', type=int, metavar='',
-                        required=True, default=100, help='number of iterations to tune in NUTS')
+parser.add_argument('-nd', '--n_draws', type=int, metavar='',
+                    required=True, default=100, help='number of draws per chain')
 
-    parser.add_argument('-fam', '--family', type=str, metavar='',
-                        required=True, default='bernoulli', help='prior family to use')
+parser.add_argument('-nt', '--n_tune', type=int, metavar='',
+                    required=True, default=100, help='number of iterations to tune in NUTS')
 
-    # Parse agrs
-    FORMAT = True
-    args = parser.parse_args()
-    model_name = args.model_name
-    use_cogs = True if args.cogs == 'True' else False
-    use_noise = True if args.use_noise == 'True' else False
-    drop_homology = True if args.drop_homology == 'True' else False
-    species_id = args.species_id
-    output_dir = os.path.join(args.output_dir, model_name)
-    n_runs = args.n_runs
-    n_chains = args.n_chains
-    n_draws = args.n_draws
-    n_tune = args.n_tune
-    family = args.family
-    print('Running script with the following args:\n', args)
-    print('\n')
+parser.add_argument('-fam', '--family', type=str, metavar='',
+                    required=True, default='bernoulli', help='prior family to use')
 
-else:
-    # Define defaults without using Argparse
-    model_name = 'bambi_model_0'
-    use_cogs = False
-    use_noise = True
-    drop_homology = True
-    species_id = '511145'
-    output_dir = os.path.join('benchmark/cog_predictions', model_name)
-    n_runs = 1
-    n_chains = 4
-    n_draws = 100
-    n_tune = 300
-    family = 'bernoulli'
+# Parse agrs
+FORMAT = True
+args = parser.parse_args()
+model_name = args.model_name
+use_cogs = True if args.cogs == 'True' else False
+use_noise = True if args.use_noise == 'True' else False
+drop_homology = True if args.drop_homology == 'True' else False
+species_id = args.species_id
+output_dir = os.path.join(args.output_dir, model_name)
+input_dir = os.path.join(args.input_dir)
+
+n_runs = args.n_runs
+n_chains = args.n_chains
+n_draws = args.n_draws
+n_tune = args.n_tune
+family = args.family
+print('Running script with the following args:\n', args)
+print('\n')
 
 # Check whether the specified path exists or not
 isExist = os.path.exists(os.path.join(output_dir, 'ensemble'))
@@ -334,13 +323,13 @@ for (species, species_name) in species_dict.items():
         spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
-        # Paths for pre-defined train and validate sets
-        train_path = "pre_processed_data/script_test/{}_train.csv".format(
-            species_name)
-        valid_path = "pre_processed_data/script_test/{}_valid.csv".format(
-            species_name)
-        all_path = 'pre_processed_data/script_test/{}_all.csv'.format(
-            species_name)
+        # Load in pre-defined train and validate sets
+        train_path = os.path.join(input_dir, "{}_train.csv".format(
+            species_name))
+        valid_path = os.path.join(input_dir,"{}_valid.csv".format(
+            species_name))
+        all_path =  os.path.join(input_dir,"{}_all.csv".format(
+            species_name))
 
         # Load data
         train_data = pd.read_csv(train_path, header=0,
