@@ -318,7 +318,6 @@ params = {'max_depth': 15,
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
 
 # Run code for each species given in bash file: do this 'n_runs' times to reduce stochasticity
-n_runs = 4
 predictions = []
 probabilities = []
 
