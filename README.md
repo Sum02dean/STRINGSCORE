@@ -18,13 +18,13 @@ cp -r /mnt/mnemo1/sum02dean/dean_mnt/projects/STRINGSCORE/src/data .
 ```
 
 ### Data Preparation
-To change the defulat pre-processing arguments please modify the alues in the run_pre_process.sh file.
+To change the default pre-processing arguments please modify the values in the run_pre_process.sh file.
 ```sh
 cd src
 bash run_pre_process.sh -o pre_processed_data/
 ```
 ### Running the model
-Each model comes with a seperate bash file. Within each bash file file there are sets of options to choose specift. To see the definition of each option run the corresponding python file name followed by --help. 
+Each model comes with a seperate bash file. Within each bash file there are sets of options to choose from. To see the definition of each option, run the corresponding python file name followed by --help. 
 - run_xgboost.sh
 - run_bambi.sh
 - run_net.sh
