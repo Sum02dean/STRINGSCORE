@@ -47,7 +47,7 @@ Outputs will be organised as such:
 
 ### Hyper-parameter selection
 
-Below are listed some useful parameters to use for initial hyper-parameter optimization, see the /models/ section for model specific documentation. Note that for Bambi - the majority of parameters are deterined using [NUTS](http://www.stat.columbia.edu/~gelman/research/published/nuts.pdf).
+Below are listed some useful parameters to use for initial hyper-parameter optimization, see the /models/ section for model specific documentation. Note that for Bambi - the majority of parameters are determined using [NUTS](http://www.stat.columbia.edu/~gelman/research/published/nuts.pdf).
 
 XGBoost:
 | Parameter | Value |
