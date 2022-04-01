@@ -18,7 +18,7 @@ cp -r /mnt/mnemo1/sum02dean/dean_mnt/projects/STRINGSCORE/src/data .
 ```
 
 ### Data Preparation
-To change the defulat pre-processing argments please modify the alues in the run_pre_process.sh file.
+To change the defulat pre-processing arguments please modify the alues in the run_pre_process.sh file.
 ```sh
 cd src
 bash run_pre_process.sh -o pre_processed_data/
@@ -38,11 +38,11 @@ python xgboost_model.py
 Outputs will be organised as such:
 ```
     models
-    |_ _ output_directory
-          |_ _ model_name
-          |      |_ _ (plots and main results)
-          |_ _ensemble 
-                 |_ _ (ensemble model data)
+    |_ _output_directory
+    |   |_ _model_name
+    |       |_ _(plots and main results)
+    |       |_ _ensemble 
+    |           |_ _ (ensemble model data)
 ```
 
 ### Hyper-parameter selection
