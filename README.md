@@ -99,13 +99,3 @@ The conda environemnt provided should contain all of these requirements. If not 
 | Perl for Pytthon |[Pypi](https://pypi.org/project/perl/)|
 | Perl-Json module for Python |[Pypi](https://anaconda.org/bioconda/perl-json)|
 
-### Pymc3 (Bambi)
-This dependency causes the most problems. If the provided Python environement does not work, try to install this package in a new Python env (make sure this is package is installed first). Follow the instructions on [Github](https://github.com/pymc-devs/pymc/wiki/Installation-Guide-(Linux)) under sub-section "Theano-PyMC Installation".
-
-```bash
-git clone https://github.com/pymc-devs/pymc
-cd pymc
-git checkout v3
-pip install -r requirements.txt
-```
-
