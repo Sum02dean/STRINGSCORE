@@ -101,5 +101,6 @@ The conda environemnt provided should contain all of these requirements. If not 
 | Bambi |[Pypi](https://bambinos.github.io/bambi/main/index.html)|
 | XGBoost |[Pypi](https://xgboost.readthedocs.io/en/latest/install.html)|
 | Pytorch (cpu, linux) |[Pypi](https://pytorch.org/)|
+| torch-summary |[Pypi](https://pypi.org/project/torch-summary/|
 
-IMPORTANT! For installation of R, Perl and Perl-Json install first, and always use the second option suggested.
+IMPORTANT! For installation of R, Perl and Perl-Json install in order shown first. Always use the second option suggested by the installation page.
