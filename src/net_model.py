@@ -325,9 +325,14 @@ def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
         hidden_size = params['hidden_size']
         output_size = params['output_size']
 
+        # Define key model args
         net = BinaryClassification(input_dim=input_size, hidden_dim=[
                                    hidden_size], output_dim=output_size)
+        criterion = torch.nn.BCEWithLogitsLoss()
+        optimizer = optim.SGD(net.parameters(), lr=params['learning_rate'], momentum=0.9)
         params['net'] = net
+        params['criterion'] = criterion
+        params['optimizer'] = optimizer 
 
         print('Network Architecture: \n', net)
         net = train_network(params=params, x_train=x_train, y_train=y_train)
@@ -335,6 +340,7 @@ def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
         net, y, y_hat, y_probas = predict(
             net=net, x_test=x_test, y_test=y_test)
 
+       
         # Collect the model specific data
         models.append(net)
         probabilities.append(y_probas)
@@ -416,7 +422,7 @@ parser.add_argument('-e', '--epochs', type=int, metavar='',
 parser.add_argument('-hs', '--hidden_size', type=int, metavar='',
                     required=True, default=200, help='amount of neurons in hidden layer')
 
-parser.add_argument('-lr', '--learnging_rate', type=int, metavar='',
+parser.add_argument('-lr', '--learning_rate', type=float, metavar='',
                     required=True, default=0.001, help='learning rate to apply to gradient update')
 
 # Parse agrs
@@ -463,6 +469,7 @@ full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 # Store parameters
 params = {
     'epochs': epochs,
+    'learning_rate':learning_rate,
     'input_size': input_size,
     'output_size': output_size,
     'hidden_size': hidden_size,
@@ -506,7 +513,7 @@ for (species, species_name) in species_dict.items():
         # Run and time the model
         t1 = time.time()
         output = run_pipeline(x=x, cogs=use_cogs,
-                              params=params, weights=weights, noise=use_noise)
+                              params=params,noise=use_noise)
         t2 = time.time()
         print("Finished training in {}".format(t2 - t1))
 

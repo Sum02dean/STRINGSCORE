@@ -1,5 +1,5 @@
 #!/bin/bash
-/mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python bambi_model.py \
+/mnt/mnemo5/sum02dean/miniconda3/envs/string-score-2.0/bin/python bambi_model.py \
 --model_name bambi \
 --output_dir models/test_env/ \
 --input_dir pre_processed_data/scaled/ \

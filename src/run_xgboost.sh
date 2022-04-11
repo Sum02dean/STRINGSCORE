@@ -1,8 +1,8 @@
 #!/bin/bash
-/mnt/mnemo5/sum02dean/miniconda3/envs/string_score/bin/python xgboost_model.py \
+/mnt/mnemo5/sum02dean/miniconda3/envs/string-score-2.0/bin/python xgboost_model.py \
 --model_name xgboost \
 --output_dir models/test_env/ \
---input_dir pre_processed_data/scaled/ \
+--input_dir pre_processed_data/ \
 --species_id '511145' \
 --cogs True \
 --use_noise True \

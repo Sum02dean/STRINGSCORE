@@ -21,8 +21,8 @@ from collections import OrderedDict
 import time
 import arviz as az
 import pymc3 as pm
-import theano as thno
-import theano.tensor as T
+# import theano as thno
+# import theano.tensor as T
 from scipy import integrate
 from scipy.optimize import fmin_powell
 from collections import defaultdict
