@@ -35,7 +35,7 @@ python xgboost_model.py
 ```
 
 ### Model Output
-Outputs will be organised as such:
+Outputs will be organised as such - this is automatically generated:
 ```
     models
     |_ _output_directory
