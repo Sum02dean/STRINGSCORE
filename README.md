@@ -92,7 +92,7 @@ Neural Network (Pytorch):
 """Pandas Multiindex deprecation: FutureWarning: pandas.Int64Index is deprecated and will be removed from pandas in a future version. Use pandas.Index with the appropriate dtype instead."""
 ```
 ### Major dependencies
-The conda environemnt provided should contain all of these requirements. If not you can find them at the following sources.
+The conda environemnt provided should contain all of these requirements. If not, you can find them at the following sources.
 | Dependency | Intallation |
 | ------ | ------ | 
 | R for Python (second option) |[Anaconda](https://anaconda.org/r/r)|
