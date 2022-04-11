@@ -93,7 +93,7 @@ Neural Network (Pytorch):
 ```
 ### Major dependencies
 The conda environemnt provided should contain all of these requirements. If not, you can find them at the following sources.
-| Dependency | Intallation |
+| Dependency | Installation |
 | ------ | ------ | 
 | R for Python (second option) |[Anaconda](https://anaconda.org/r/r)|
 | Perl for Python  (second option) |[Pypi](https://pypi.org/project/perl/)|
