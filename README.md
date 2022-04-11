@@ -96,6 +96,10 @@ The conda environemnt provided should contain all of these requirements. If not 
 | Dependency | Intallation |
 | ------ | ------ | 
 | R for Python (second option) |[Anaconda](https://anaconda.org/r/r)|
-| Perl for Pytthon |[Pypi](https://pypi.org/project/perl/)|
-| Perl-Json module for Python |[Pypi](https://anaconda.org/bioconda/perl-json)|
+| Perl for Python  (second option) |[Pypi](https://pypi.org/project/perl/)|
+| Perl-Json module for Python (second option) |[Pypi](https://anaconda.org/bioconda/perl-json)|
+| Bambi |[Pypi](https://bambinos.github.io/bambi/main/index.html)|
+| XGBoost |[Pypi](https://xgboost.readthedocs.io/en/latest/install.html)|
+| Pytorch (cpu, linux) |[Pypi](https://pytorch.org/)|
 
+IMPORTANT! For installation of R, Perl and Perl-Json always use the second option
