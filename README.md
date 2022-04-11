@@ -102,4 +102,4 @@ The conda environemnt provided should contain all of these requirements. If not 
 | XGBoost |[Pypi](https://xgboost.readthedocs.io/en/latest/install.html)|
 | Pytorch (cpu, linux) |[Pypi](https://pytorch.org/)|
 
-IMPORTANT! For installation of R, Perl and Perl-Json always use the second option
+IMPORTANT! For installation of R, Perl and Perl-Json install first, and always use the second option suggested.
