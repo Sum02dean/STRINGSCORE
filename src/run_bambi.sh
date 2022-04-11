@@ -8,8 +8,8 @@
 --use_noise True \
 --drop_homology True \
 --n_runs 1 \
---n_chains 2 \
---n_draws  1000 \
+--n_chains 3 \
+--n_draws 1000 \
 --n_tune 3000 \
 --family bernoulli
 
