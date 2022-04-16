@@ -20,7 +20,7 @@ cp -r /mnt/mnemo1/sum02dean/dean_mnt/projects/STRINGSCORE/src/data .
 ### Data Preparation
 To change the default pre-processing arguments please modify the values in run_pre_process.sh file, then run:
 ```sh
-cd src
+cd src/scripts
 bash run_pre_process.sh
 ```
 ### Running the model
