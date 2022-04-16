@@ -21,7 +21,7 @@ cp -r /mnt/mnemo1/sum02dean/dean_mnt/projects/STRINGSCORE/src/data .
 ```
 
 ### Label Generation
-It is not essential to generate labels since this is pre-provided in the data directoy.
+It is not essential to generate labels since this is pre-provided in the data directory.
 However if required, labels can be regenerated via running:
 ```bash
 cd src/scripts
