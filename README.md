@@ -1,3 +1,5 @@
+![STRING logo](configs/logo.jpg)
+configs/logo.jpg
 # String Score Optimization
 This repository contains code for the optimization of the String-DB protein-protein interaction prediction score. 
 
