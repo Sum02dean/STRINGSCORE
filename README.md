@@ -11,7 +11,7 @@ conda activate string_score_3
 ```
 
 ### Data
-The data folder should be copied within your src directory. The data folder contains everything required to run the model scripts.
+The data folder should be copied into your src directory. The data folder contains all raw data required to run the model scripts.
 ```sh
 cd src
 cp -r /mnt/mnemo1/sum02dean/dean_mnt/projects/STRINGSCORE/src/data .
