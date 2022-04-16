@@ -2,7 +2,7 @@
 
 
 # STRING Score Optimization
-This repository contains code for the optimization of the String-DB protein-protein interaction prediction score. 
+This repository contains code for the optimization of the [String-DB](https://string-db.org/) protein interaction prediction score. 
 
 ### Installation 
 This requires a valid installation of [Anaconda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) or [miniconda](https://docs.conda.io/en/latest/miniconda.html). Create the Python environment as described below:
