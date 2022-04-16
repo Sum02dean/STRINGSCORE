@@ -10,7 +10,7 @@ This requires a valid installation of [Anaconda](https://docs.conda.io/projects/
 ```sh
 cd configs
 conda env create -f env.yml 
-conda activate string_score_3
+conda activate string_score_env
 ```
 
 ### Data
