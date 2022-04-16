@@ -1,15 +1,6 @@
-import sys
 import os
 from string_utils import *
-import seaborn as sns
-import sklearn
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, classification_report
-
+import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -20,7 +11,6 @@ import pandas as pd
 from string_utils import *
 import argparse
 import subprocess
-import json
 import copy
 from collections import Counter as C
 
@@ -174,7 +164,7 @@ def train_network(params, x_train, y_train):
     return net
 
 
-def predict(net, x_test, y_test):
+def xgb_predict(net, x_test, y_test):
     """Computes neural network predictions on test data
 
     :param net: neural network object
@@ -337,7 +327,7 @@ def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
         print('Network Architecture: \n', net)
         net = train_network(params=params, x_train=x_train, y_train=y_train)
         print("Predicting on test data")
-        net, y, y_hat, y_probas = predict(
+        net, y, y_hat, y_probas = xgb_predict(
             net=net, x_test=x_test, y_test=y_test)
 
        
@@ -365,7 +355,7 @@ def mean_probas(x_test, y_test, models):
 
     # Loop over all models, make predictions across K model, compute average.
     for i in range(len(models)):
-        net, y, y_hat, probas = predict(models[i], x_test, y_test)
+        net, y, y_hat, probas = xgb_predict(models[i], x_test, y_test)
         mean_probas[:, i] = probas
 
     # Returns the mean predictions for all K models
@@ -405,10 +395,13 @@ parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
 parser.add_argument('-sid', '--species_id', type=str, metavar='',
                     required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
 
+parser.add_argument('-i', '--input_dir', type=str, metavar='',
+                    required=True, default='../pre_processed_data/', help='directory to load data from')
+
 parser.add_argument('-o', '--output_dir', type=str, metavar='',
                     required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
-parser.add_argument('-ns', '--n_runs', type=int, metavar='',
+parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
                     required=True, default=3, help='number of randomised samplings')
 
 
@@ -434,7 +427,8 @@ use_noise = True if args.use_noise == 'True' else False
 drop_homology = True if args.drop_homology == 'True' else False
 species_id = args.species_id
 output_dir = os.path.join(args.output_dir, model_name)
-n_runs = args.n_runs
+input_dir = os.path.join(args.input_dir)
+n_runs = args.n_sampling_runs
 
 # ML args
 input_size = 12 if drop_homology else 13
@@ -457,12 +451,12 @@ if not isExist:
         os.path.join(output_dir, 'ensemble')))
 
 # Specify link paths
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg_path = '../data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 # Map species ID to  name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg_path = '../data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 
@@ -480,17 +474,17 @@ for (species, species_name) in species_dict.items():
     if species in species_id:
 
         print("Computing for {}".format(species))
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        spec_path = '../data/{}.protein.links.full.v11.5.txt'.format(species)
         kegg_data = pd.read_csv(
             spec_path, header=0, sep=' ', low_memory=False)
 
-        # Load in pre-defined train and validate sets
-        train_path = "pre_processed_data/scaled/{}_train.csv".format(
-            species_name)
-        valid_path = "pre_processed_data/scaled/{}_valid.csv".format(
-            species_name)
-        all_path = 'pre_processed_data/scaled/{}_all.csv'.format(
-            species_name)
+       # Load in pre-defined train and validate sets
+        train_path = os.path.join(input_dir, "{}_train.csv".format(
+            species_name))
+        valid_path = os.path.join(input_dir,"{}_valid.csv".format(
+            species_name))
+        all_path =  os.path.join(input_dir,"{}_all.csv".format(
+            species_name))
 
         # Load train, test, valid data
         train_data = pd.read_csv(
@@ -501,7 +495,7 @@ for (species, species_name) in species_dict.items():
             all_path, header=0, low_memory=False, index_col=0)
 
         # Load in all data even without KEGG memberships
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        spec_path = '../data/{}.protein.links.full.v11.5.txt'.format(species)
         x_data = pd.read_csv(spec_path, header=0,
                              sep=' ', low_memory=False)
 
@@ -512,8 +506,7 @@ for (species, species_name) in species_dict.items():
 
         # Run and time the model
         t1 = time.time()
-        output = run_pipeline(x=x, cogs=use_cogs,
-                              params=params,noise=use_noise)
+        output = run_pipeline(x=x, cogs=use_cogs, params=params,noise=use_noise, n_runs=n_runs)
         t2 = time.time()
         print("Finished training in {}".format(t2 - t1))
 
@@ -536,7 +529,7 @@ for (species, species_name) in species_dict.items():
         v.drop(columns=['labels', 'cogs'], inplace=True)
 
         # Get test probabilities
-        _, xy, xy_hat, x_probas = predict(
+        _, xy, xy_hat, x_probas = xgb_predict(
             net=classifiers, x_test=x, y_test=x_labels)
 
         # Reformat test predictions
@@ -544,7 +537,7 @@ for (species, species_name) in species_dict.items():
         x_probas = [[x, x] for x in x_probas]
 
         # Get validation probabilities
-        _, vy, vy_hat, v_probas = predict(
+        _, vy, vy_hat, v_probas = xgb_predict(
             net=classifiers, x_test=v, y_test=v_labels)
 
         # Reformat validation predictions
@@ -552,7 +545,7 @@ for (species, species_name) in species_dict.items():
         v_probas = [[x, x] for x in v_probas]
 
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-        combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
+        combined_score_file = '../data/{}.combined.v11.5.tsv'.format(species)
         combined_scores = pd.read_csv(
             combined_score_file, header=None, sep='\t')
 
@@ -598,7 +591,7 @@ for (species, species_name) in species_dict.items():
 
             # Call Damians benchmark script on data splits
             print("Computing summary statistics for {} data.".format(file_name))
-            command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+            command = ['perl'] + ['../compute_summary_statistics_for_interact_files.pl'] + \
                 ["{}/quality_full_{}.{}.{}.json".format(
                     output_dir, model_name, file_name, species)]
             out = subprocess.run(command)

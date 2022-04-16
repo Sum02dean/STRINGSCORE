@@ -6,7 +6,6 @@ import argparse
 import subprocess
 import copy
 import warnings
-from collections import Counter as C
 from string_utils import *
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -135,7 +134,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         # Make a one time prediction for each of the splits
         clf = build_model(params, class_ratio=weights)
         clf = fit(clf, x_train, y_train, x_test, y_test)
-        clf, preds, probas, acc, _ = predict(clf, x_test, y_test)
+        clf, preds, probas, acc, _ = xgb_predict(clf, x_test, y_test)
 
         # Collect the model specific data
         models.append(clf)
@@ -266,7 +265,7 @@ parser.add_argument('-i', '--input_dir', type=str, metavar='',
 parser.add_argument('-foi', '--use_foi', type=str, metavar='',
                     required=True, default='False', help='make dot-plot on feature of interest')
 
-parser.add_argument('-ns', '--n_samples', type=int, metavar='',
+parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
                     required=True, default=3, help='number of randomised samplings')
 
 parser.add_argument('-pp', '--pre_process', type=str, metavar='',
@@ -287,7 +286,7 @@ species_id = args.species_id
 output_dir = os.path.join(args.output_dir, model_name)
 input_dir = os.path.join(args.input_dir)
 use_foi = True if args.use_foi == 'True' else False
-n_samples = args.n_samples
+n_samples = args.n_sampling_runs
 pre_process = True if args.pre_process == 'True' else False
 
 print('Running script with the following args:\n', args)
@@ -302,7 +301,7 @@ if not isExist:
     print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
 
 # Specify link paths
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg_path = '../data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 # Run the full pipeline (these values have been optimised, don't change!)
@@ -324,7 +323,7 @@ probabilities = []
 for (species, species_name) in species_dict.items():
     if species in species_id:
         print("Computing for {}".format(species))
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        spec_path = '../data/{}.protein.links.full.v11.5.txt'.format(species)
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
         # Load in pre-defined train and validate sets
@@ -344,7 +343,7 @@ for (species, species_name) in species_dict.items():
             all_path, header=0, low_memory=False, index_col=0)
 
         # Load in all data even without KEGG memberships
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        spec_path = '../data/{}.protein.links.full.v11.5.txt'.format(species)
         x_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
         # Remove reference to the original data  (uncomment as necessary)
@@ -390,7 +389,7 @@ for (species, species_name) in species_dict.items():
                    'ensemble_report_v_{}.csv'.format(species)))
 
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-        combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
+        combined_score_file = '../data/{}.combined.v11.5.tsv'.format(species)
         combined_scores = pd.read_csv(
             combined_score_file, header=None, sep='\t')
 
@@ -432,7 +431,7 @@ for (species, species_name) in species_dict.items():
 
             # Call Damians benchmark script on all data splits
             print("Computing summary statistics for {} data.".format(file_name))
-            command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+            command = ['perl'] + ['../compute_summary_statistics_for_interact_files.pl'] + \
                 ["{}/quality_full_{}.{}.{}.json".format(
                     output_dir,
                     model_name,

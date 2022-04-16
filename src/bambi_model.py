@@ -7,6 +7,8 @@ import bambi as bmb
 import argparse
 import subprocess
 import time
+import copy
+
 
 # Script specific functions.
 
@@ -46,8 +48,10 @@ def mean_probas(x, models, classifiers, compute_summary=False):
              ensemble summary reports
     :rtype: tuple(negative proabs, positive probas), list of pandas.core.DataFrames
     """
+    
     mp = np.zeros(np.shape(x)[0])
     summaries = []
+
     for i in range(len(models)):
         # Estimate the max-likelihood of the predictive posterior
         idata = models[i].predict(classifiers[i], data=x, inplace=False)
@@ -76,7 +80,7 @@ def combine_ensemble_reports(df_list, protein_names):
     :type protein_names: list
     """
     try:
-        assert (len(df_list) > 1)
+        assert (len(df_list) >= 1)
     except:
         raise AssertionError(
             "Expected len(df_list) > 1; got {}".format(len(df_list)))
@@ -93,7 +97,7 @@ def combine_ensemble_reports(df_list, protein_names):
     x.reset_index(inplace=True, drop=False)
 
     # Extract each subsequent pandas DatFrame and modify it
-    for i in range(1, len(df_list)):
+    for i in range(1, len(df_list)+1):
         xi = df_list[i]
         xi['protein1'] = pn1
         xi['protein2'] = pn2
@@ -121,7 +125,6 @@ def combine_ensemble_reports(df_list, protein_names):
     x.drop(columns=['run', 'mcse_mean', 'mcse_sd',
            'ess_bulk', 'ess_tail', 'r_hat'], inplace=True)
     return x
-
 
 def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
     """Runs the entire modeling process, pre-processing has now been migrated to src/pre_process.py.
@@ -256,12 +259,12 @@ parser.add_argument('-sid', '--species_id', type=str, metavar='',
                     required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
 
 parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
+                    required=True, default='../models', help='directory to save outputs to')
 
 parser.add_argument('-i', '--input_dir', type=str, metavar='',
-                    required=True, default='pre_processed_data/scaled/', help='input directory for pre-processed data')
+                    required=True, default='../scaled/', help='input directory for pre-processed data')
 
-parser.add_argument('-ns', '--n_runs', type=int, metavar='',
+parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
                     required=True, default=3, help='number of randomised samplings')
 
 parser.add_argument('-nc', '--n_chains', type=int, metavar='',
@@ -276,6 +279,9 @@ parser.add_argument('-nt', '--n_tune', type=int, metavar='',
 parser.add_argument('-fam', '--family', type=str, metavar='',
                     required=True, default='bernoulli', help='prior family to use')
 
+parser.add_argument('-er', '--ensemble_report', type=str, metavar='',
+                    required=True, default='False', help='to generate ensemble report (warning - very slow')
+
 # Parse agrs
 FORMAT = True
 args = parser.parse_args()
@@ -283,11 +289,11 @@ model_name = args.model_name
 use_cogs = True if args.cogs == 'True' else False
 use_noise = True if args.use_noise == 'True' else False
 drop_homology = True if args.drop_homology == 'True' else False
+ensemble_report = True if args.ensemble_report == 'True' else False
 species_id = args.species_id
 output_dir = os.path.join(args.output_dir, model_name)
 input_dir = os.path.join(args.input_dir)
-
-n_runs = args.n_runs
+n_runs = args.n_sampling_runs
 n_chains = args.n_chains
 n_draws = args.n_draws
 n_tune = args.n_tune
@@ -303,7 +309,7 @@ if not isExist:
     print("{} directory created.".format(os.path.join(output_dir, 'ensemble')))
 
 # Specify link paths
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg_path = '../data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 # Map species ID to species name
@@ -320,7 +326,7 @@ for (species, species_name) in species_dict.items():
     if species in species_id:
 
         print("\nComputing for {}".format(species))
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
+        spec_path = '../data/{}.protein.links.full.v11.5.txt'.format(species)
         kegg_data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
 
         # Load in pre-defined train and validate sets
@@ -350,7 +356,7 @@ for (species, species_name) in species_dict.items():
         # Run and time the model
         t1 = time.time()
         output = run_pipeline(
-            x=x, cogs=use_cogs, params=params, noise=use_noise)
+            x=x, cogs=use_cogs, params=params, noise=use_noise, n_runs=n_runs)
         t2 = time.time()
         print("Finished training in {}".format(t2 - t1))
 
@@ -364,7 +370,7 @@ for (species, species_name) in species_dict.items():
         # Grab classifier(s)
         classifiers = output['classifier']
         models = output['models']
-
+ 
         # Remove COG labels from the data
         # x.drop(columns=['labels', 'cogs'], inplace=True)
         x = a
@@ -372,33 +378,35 @@ for (species, species_name) in species_dict.items():
         v.drop(columns=['labels', 'cogs', 'neighborhood'], inplace=True)
 
         # Get ensemble predictions
-        ensemble_probas_x, summaries_x = mean_probas(
-            x, models=models, classifiers=classifiers, compute_summary='True')
-        ensemble_probas_v, summaries_v = mean_probas(
-            v, models=models, classifiers=classifiers, compute_summary='True')
+        probas_x, summaries_x = mean_probas(
+            x, models=models, classifiers=classifiers, compute_summary=ensemble_report)
+        
+        probas_v, summaries_v = mean_probas(
+            v, models=models, classifiers=classifiers, compute_summary=ensemble_report)
 
-        # Get ensemble reports
-        c_x = combine_ensemble_reports(
-            summaries_x, protein_names=x.index.values)
-        c_v = combine_ensemble_reports(
-            summaries_v, protein_names=v.index.values)
+        if ensemble_report:
+            # Get ensemble reports
+            c_x = combine_ensemble_reports(
+                summaries_x, protein_names=x.index.values)
+            c_v = combine_ensemble_reports(
+                summaries_v, protein_names=v.index.values)
 
-        # Save ensemble reports
-        c_x.to_csv(os.path.join(output_dir, 'ensemble',
-                   'ensemble_report_x_{}.csv'.format(species)))
-        c_v.to_csv(os.path.join(output_dir, 'ensemble',
-                   'ensemble_report_v_{}.csv'.format(species)))
+            # Save ensemble reports
+            c_x.to_csv(os.path.join(output_dir, 'ensemble',
+                    'ensemble_report_x_{}.csv'.format(species)))
+            c_v.to_csv(os.path.join(output_dir, 'ensemble',
+                    'ensemble_report_v_{}.csv'.format(species)))
 
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
-        combined_score_file = 'data/{}.combined.v11.5.tsv'.format(species)
+        combined_score_file = '../data/{}.combined.v11.5.tsv'.format(species)
         combined_scores = pd.read_csv(
             combined_score_file, header=None, sep='\t')
 
         # Save data compatible for Damaians benchmark script (all data)
-        x_outs = save_outputs_benchmark(x=x, probas=ensemble_probas_x, sid=species,
+        x_outs = save_outputs_benchmark(x=x, probas=probas_x, sid=species,
                                         direc=output_dir, model_name=model_name + '.train_data')
 
-        v_outs = save_outputs_benchmark(x=v, probas=ensemble_probas_v, sid=species,
+        v_outs = save_outputs_benchmark(x=v, probas=probas_v, sid=species,
                                         direc=output_dir, model_name=model_name + '.hold_out_data')
 
         # Get the intersection benchmark plot
@@ -435,7 +443,7 @@ for (species, species_name) in species_dict.items():
 
             # Call Damians benchmark script on all of train - test - valid
             print("\nComputing summary statistics for {} data.".format(file_name))
-            command = ['perl'] + ['compute_summary_statistics_for_interact_files.pl'] + \
+            command = ['perl'] + ['../compute_summary_statistics_for_interact_files.pl'] + \
                 ["{}/quality_full_{}.{}.{}.json".format(
                     output_dir, model_name, file_name, species)]
             out = subprocess.run(command)

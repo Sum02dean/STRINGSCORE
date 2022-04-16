@@ -21,8 +21,8 @@ from collections import OrderedDict
 import time
 import arviz as az
 import pymc3 as pm
-# import theano as thno
-# import theano.tensor as T
+import theano as thno
+import theano.tensor as T
 from scipy import integrate
 from scipy.optimize import fmin_powell
 from collections import defaultdict
@@ -412,7 +412,7 @@ def fit(clf, x_train, y_train, x_test, y_test):
     return clf
 
 
-def predict(clf, x_test, y_test):
+def xgb_predict(clf, x_test, y_test):
     """Predict on the unknown observations
 
     :param clf: XGBoost model
@@ -555,16 +555,16 @@ def generate_quality_json(model_name, direct, sid='9606', alt=''):
         benchmark_file = "{}/{}.{}.combined.v11.5.tsv".format(
             direct, alt, sid)
     else:
-        benchmark_file = "data/{}.combined.v11.5.tsv".format(sid)
+        benchmark_file = "../data/{}.combined.v11.5.tsv".format(sid)
 
     json_report = {
         "run_title": "model_v11.5.{}.{}".format(model_name, sid),
         "output_filename_plots": "{}/{}.{}.scores.pdf".format(direct, model_name, sid),
         "output_filename_data": "{}/{}.{}.scores.data.tsv".format(direct, model_name, sid),
         "output_filename_errors": "{}/{}.{}.scores.error.tsv".format(direct, model_name, sid),
-        "valid_proteins_file": "data/valid_{}.tsv".format(sid),
+        "valid_proteins_file": "../data/valid_{}.tsv".format(sid),
         "organisms_to_report": [int(sid)],
-        "benchmarking_file": "data/kegg_benchmarking.CONN_maps_in.v11.tsv",
+        "benchmarking_file": "../data/kegg_benchmarking.CONN_maps_in.v11.tsv",
         "samples": [
             {
                 "name": "combined_v11.5",

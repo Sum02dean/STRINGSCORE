@@ -1,9 +1,5 @@
 from string_utils import *
 import pandas as pd
-from time import time
-import numpy as np
-from collections import defaultdict
-import matplotlib.pyplot as plt
 import argparse
 
 """ This script is resonsible for loading in the data and generating labels.

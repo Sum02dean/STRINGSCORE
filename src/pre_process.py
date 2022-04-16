@@ -1,11 +1,8 @@
-import sys
 import os
 from string_utils import *
 from collections import Counter as Counter
-import numpy as np
 import pandas as pd
 import argparse
-import sklearn
 from sklearn.preprocessing import StandardScaler
 
 
@@ -43,7 +40,7 @@ print("collected command-line args: {}".format(args))
 
 # Map species ID to name
 species_dict = {'511145': 'ecoli', '9606': 'human', '4932': 'yeast'}
-full_kegg_path = 'data/kegg_benchmarking.CONN_maps_in.v11.tsv'
+full_kegg_path = '../data/kegg_benchmarking.CONN_maps_in.v11.tsv'
 full_kegg = pd.read_csv(full_kegg_path, header=None, sep='\t')
 
 # Check whether the specified path exists or not
@@ -59,8 +56,8 @@ for (species, species_name) in species_dict.items():
     if species in species_id:
         # Execute data correction
         print("Pre-processing data for {}".format(species))
-        spec_path = 'data/{}.protein.links.full.v11.5.txt'.format(species)
-        label_path = 'data/{}_labels.csv'.format(species_name)
+        spec_path = '../data/{}.protein.links.full.v11.5.txt'.format(species)
+        label_path = '../data/{}_labels.csv'.format(species_name)
         data = pd.read_csv(spec_path, header=0, sep=' ', low_memory=False)
         labels = pd.read_csv(label_path, index_col=False, header=None)
 
