@@ -96,7 +96,7 @@ The conda environemnt provided should contain all of these requirements. If not,
 
 | Dependency | Installation |
 | ------ | ------ | 
-| Bambi |Install with: ```pip install -U git+https://github.com/bambinos/bambi.git@main```|
+| Bambi |Install with:    ```pip install -U git+https://github.com/bambinos/bambi.git@main```|
 | XGBoost |[Pypi](https://xgboost.readthedocs.io/en/latest/install.html)|
 | Pytorch (cpu, linux) |[Pypi](https://pytorch.org/)|
 | torch-summary |[Pypi](https://pypi.org/project/torch-summary/)|
