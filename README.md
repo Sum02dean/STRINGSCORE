@@ -20,6 +20,14 @@ cd src
 cp -r /mnt/mnemo1/sum02dean/dean_mnt/projects/STRINGSCORE/src/data .
 ```
 
+### Label Generation
+It is not essential to generate labels since this is pre-provided in the data directoy.
+However if required, labels can be regenerated via running:
+```bash
+cd src/scripts
+bash run_label_generation.sh
+```
+
 ### Data Preparation
 To change the default pre-processing arguments please modify the values in run_pre_process.sh file, then run:
 ```sh
