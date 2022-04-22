@@ -10,7 +10,7 @@
 --n_sampling_runs 3 \
 --batch_size 50 \
 --epochs 5 \
---hidden_size 100 \
+--hidden_size '100' \
 --learning_rate 0.002 \
 --generate_report True
 

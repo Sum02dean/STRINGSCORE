@@ -484,7 +484,7 @@ output_size = 1
 to_shuffle = True
 batch_size = args.batch_size
 epochs = args.epochs
-hidden_size = [int(x) for x in args.hidden_size]
+hidden_size = [int(x) for x in args.hidden_size.split(' ')]
 learning_rate = args.learning_rate
 print('Running script with the following args:\n', args)
 print('\n')
