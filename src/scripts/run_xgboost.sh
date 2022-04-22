@@ -9,9 +9,8 @@
 --class_weight 4 \
 --neg_ratio 4 \
 --drop_homology True \
---use_foi False \
 --n_sampling_runs 1 \
---pre_process False \
+
 
 # ecoli: 511145
 # human: 9606
