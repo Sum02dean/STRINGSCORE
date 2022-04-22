@@ -11,8 +11,6 @@ import copy
 
 
 # Script specific functions.
-
-
 def get_formula(feature_names):
     """Generates the formula required for the bambi generalized linear model (GLM)
 
@@ -253,34 +251,34 @@ parser.add_argument('-un', '--use_noise', type=str, metavar='',
                     required=True, default=False, help='if True, injects noise to X')
 
 parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
-                    required=True, default=True, help='if True, drops homology feature')
+                    required=True, default=True, help='if True, drops "homology" feature')
 
 parser.add_argument('-sid', '--species_id', type=str, metavar='',
                     required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
 
-parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                    required=True, default='../models', help='directory to save outputs to')
-
 parser.add_argument('-i', '--input_dir', type=str, metavar='',
                     required=True, default='../scaled/', help='input directory for pre-processed data')
+
+parser.add_argument('-o', '--output_dir', type=str, metavar='',
+                    required=True, default='../models', help='directory to save outputs to')
 
 parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
                     required=True, default=3, help='number of randomised samplings')
 
 parser.add_argument('-nc', '--n_chains', type=int, metavar='',
-                    required=True, default=1000, help='number of chains')
+                    required=True, default=3000, help='number of chains')
 
 parser.add_argument('-nd', '--n_draws', type=int, metavar='',
-                    required=True, default=100, help='number of draws per chain')
+                    required=True, default=3, help='number of draws per chain')
 
 parser.add_argument('-nt', '--n_tune', type=int, metavar='',
-                    required=True, default=100, help='number of iterations to tune in NUTS')
+                    required=True, default=1000, help='number of iterations to tune in NUTS')
 
 parser.add_argument('-fam', '--family', type=str, metavar='',
                     required=True, default='bernoulli', help='prior family to use')
 
-parser.add_argument('-er', '--ensemble_report', type=str, metavar='',
-                    required=True, default='False', help='to generate ensemble report (warning - very slow')
+parser.add_argument('-er', '--generate_report', type=str, metavar='',
+                    required=True, default='False', help='generates ensemble report and saves each model in then ensemble (warning - very slow')
 
 # Parse agrs
 FORMAT = True
@@ -289,7 +287,6 @@ model_name = args.model_name
 use_cogs = True if args.cogs == 'True' else False
 use_noise = True if args.use_noise == 'True' else False
 drop_homology = True if args.drop_homology == 'True' else False
-ensemble_report = True if args.ensemble_report == 'True' else False
 species_id = args.species_id
 output_dir = os.path.join(args.output_dir, model_name)
 input_dir = os.path.join(args.input_dir)
@@ -298,6 +295,8 @@ n_chains = args.n_chains
 n_draws = args.n_draws
 n_tune = args.n_tune
 family = args.family
+generate_report = True if args.generate_report == 'True' else False
+
 print('Running script with the following args:\n', args)
 print('\n')
 
@@ -372,19 +371,20 @@ for (species, species_name) in species_dict.items():
         models = output['models']
  
         # Remove COG labels from the data
-        # x.drop(columns=['labels', 'cogs'], inplace=True)
-        x = a
+        # x.drop(columns=['labels', 'cogs'], inplace=True)              # <-- uncomment to run ony on train data, else runs on all data
+        x = a                                                           # <-- comment to run ony on train data, else runs on all data
+
         x.drop(columns=['labels', 'neighborhood'], inplace=True)
         v.drop(columns=['labels', 'cogs', 'neighborhood'], inplace=True)
 
         # Get ensemble predictions
         probas_x, summaries_x = mean_probas(
-            x, models=models, classifiers=classifiers, compute_summary=ensemble_report)
+            x, models=models, classifiers=classifiers, compute_summary=generate_report)
         
         probas_v, summaries_v = mean_probas(
-            v, models=models, classifiers=classifiers, compute_summary=ensemble_report)
+            v, models=models, classifiers=classifiers, compute_summary=generate_report)
 
-        if ensemble_report:
+        if generate_report:
             # Get ensemble reports
             c_x = combine_ensemble_reports(
                 summaries_x, protein_names=x.index.values)

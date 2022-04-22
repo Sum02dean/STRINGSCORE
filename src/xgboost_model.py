@@ -134,7 +134,7 @@ def run_pipeline(x, params, scale=False, weights=None,
         # Make a one time prediction for each of the splits
         clf = build_model(params, class_ratio=weights)
         clf = fit(clf, x_train, y_train, x_test, y_test)
-        clf, preds, probas, acc, _ = xgb_predict(clf, x_test, y_test)
+        clf, preds, probas, acc, _ = model_predict(clf, x_test, y_test)
 
         # Collect the model specific data
         models.append(clf)
@@ -233,7 +233,6 @@ def combine_ensemble_reports(df_list, protein_names):
 
 
 # Extract input variables from Argparse
-
 parser = argparse.ArgumentParser(description='XGBoost')
 parser.add_argument('-n', '--model_name', type=str, metavar='',
                     required=True, default='model_0', help='name of the model')
@@ -241,35 +240,33 @@ parser.add_argument('-n', '--model_name', type=str, metavar='',
 parser.add_argument('-c', '--cogs', type=str, metavar='',
                     required=True, default=True, help='to split on cogs or not')
 
-parser.add_argument('-cw', '--class_weight', type=float, metavar='',
-                    required=True, default=4, help='factor applied to positive predictions')
-
 parser.add_argument('-un', '--use_noise', type=str, metavar='',
                     required=True, default=False, help='if True, injects noise to X')
 
+parser.add_argument('-cw', '--class_weight', type=float, metavar='',
+                    required=True, default=4, help='factor applied to positive predictions')
+
 parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
-                    required=True, default=4, help='factor increase in neg obs compared to pos obs')
+                    required=True, default=4, help='factor increase in number of neg obs compared to pos obs')
 
 parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
-                    required=True, default=True, help='if True, drops homology feature')
+                    required=True, default=True, help='if True, drops "homology" feature')
 
 parser.add_argument('-sid', '--species_id', type=str, metavar='',
                     required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
 
-parser.add_argument('-o', '--output_dir', type=str, metavar='',
-                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
-
 parser.add_argument('-i', '--input_dir', type=str, metavar='',
                     required=True, default='pre_processed_data/scaled/', help='directory for pre-processed data')
 
-parser.add_argument('-foi', '--use_foi', type=str, metavar='',
-                    required=True, default='False', help='make dot-plot on feature of interest')
+parser.add_argument('-o', '--output_dir', type=str, metavar='',
+                    required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
 parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
                     required=True, default=3, help='number of randomised samplings')
 
-parser.add_argument('-pp', '--pre_process', type=str, metavar='',
-                    required=True, default='False', help='to pre-process train and test splits')
+parser.add_argument('-gr', '--generate_report', type=str, metavar='',
+                    required=True, default='False', help='generates ensemble report and saves each model in then ensemble (warning - very slow')
+
 
 # To format data
 FORMAT = True
@@ -288,6 +285,7 @@ input_dir = os.path.join(args.input_dir)
 use_foi = True if args.use_foi == 'True' else False
 n_samples = args.n_sampling_runs
 pre_process = True if args.pre_process == 'True' else False
+generate_report = True if args.generate_report == 'True' else False
 
 print('Running script with the following args:\n', args)
 print('\n')
@@ -366,27 +364,28 @@ for (species, species_name) in species_dict.items():
 
         # Remove COG labels from the data
         v.drop(columns=['labels', 'cogs'], inplace=True)
-        # x.drop(columns=['labels', 'cogs'], inplace=True)                <-- uncomment to run ony on train data, else runs on all data
+        # x.drop(columns=['labels', 'cogs'], inplace=True)              # <-- uncomment to run ony on train data, else runs on all data
         x = a                                                           # <-- comment to run ony on train data, else runs on all data
         x.drop(columns=['labels'], inplace=True)
 
         # Get ensemble probabilities
         ensemble_probas_x, summaries_x = mean_probas(
-            x, classifiers, compute_summary=True)
+            x, classifiers, compute_summary=generate_report)
         ensemble_probas_v, summaries_v = mean_probas(
-            v, classifiers, compute_summary=True)
+            v, classifiers, compute_summary=generate_report)
 
-        # Get ensemble reports
-        c_x = combine_ensemble_reports(
-            summaries_x, protein_names=x.index.values)
-        c_v = combine_ensemble_reports(
-            summaries_v, protein_names=v.index.values)
+        if generate_report:
+            # Get ensemble reports
+            c_x = combine_ensemble_reports(
+                summaries_x, protein_names=x.index.values)
+            c_v = combine_ensemble_reports(
+                summaries_v, protein_names=v.index.values)
 
-        # Save ensemble reports
-        c_x.to_csv(os.path.join(output_dir, 'ensemble',
-                   'ensemble_report_x_{}.csv'.format(species)))
-        c_v.to_csv(os.path.join(output_dir, 'ensemble',
-                   'ensemble_report_v_{}.csv'.format(species)))
+            # Save ensemble reports
+            c_x.to_csv(os.path.join(output_dir, 'ensemble',
+                    'ensemble_report_x_{}.csv'.format(species)))
+            c_v.to_csv(os.path.join(output_dir, 'ensemble',
+                    'ensemble_report_v_{}.csv'.format(species)))
 
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = '../data/{}.combined.v11.5.tsv'.format(species)

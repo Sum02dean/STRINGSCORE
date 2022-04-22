@@ -14,7 +14,6 @@ import subprocess
 import copy
 from collections import Counter as C
 
-
 class BinaryClassification(nn.Module):
     def __init__(self, input_dim=11, hidden_dim=[11], output_dim=1):
         """ A Neural Network which can be adaptively parameterised for tabular data predictions.
@@ -164,7 +163,7 @@ def train_network(params, x_train, y_train):
     return net
 
 
-def xgb_predict(net, x_test, y_test):
+def model_predict(net, x_test, y_test):
     """Computes neural network predictions on test data
 
     :param net: neural network object
@@ -327,7 +326,7 @@ def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
         print('Network Architecture: \n', net)
         net = train_network(params=params, x_train=x_train, y_train=y_train)
         print("Predicting on test data")
-        net, y, y_hat, y_probas = xgb_predict(
+        net, y, y_hat, y_probas = model_predict(
             net=net, x_test=x_test, y_test=y_test)
 
        
@@ -345,8 +344,54 @@ def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
 
     return output_dict
 
+def combine_ensemble_reports(df_list, protein_names):
+    """ Combines the each dataset and lists each results under multi-index
 
-def mean_probas(x_test, y_test, models):
+    :param df_list: list containing pandas DF
+    :type df_list: list
+
+    :param protein_names: index list
+    :type protein_names: list
+    """
+
+    x = copy.deepcopy(df_list[0])
+    pn = [x.split("and") for x in protein_names]
+    pn1, pn2 = list(zip(*pn))
+    x['run'] = ['run_{}'.format(0)] * np.shape(x)[0]
+    x['protein1'] = pn1
+    x['protein2'] = pn2
+    x.reset_index(inplace=True, drop=True)
+
+    # Extract each subsequent pandas DatFrame and modify it
+    for i in range(1, len(df_list)):
+        xi = df_list[i]
+        xi['protein1'] = pn1
+        xi['protein2'] = pn2
+        xi['run'] = ['run_{}'.format(i)] * np.shape(xi)[0]
+        xi.reset_index(inplace=True, drop=True)
+
+        # Concatenate the 2 pandas DataFrames
+        x = pd.concat([x, xi], axis=0)
+
+    # x.drop(columns=['index'], inplace=True)
+    x.sort_index()
+
+    # Define multi-indices
+    inda = x.index.values
+    indb = x['run'].values
+
+    # Set as tuple object & create MultiIndex (MI) obj
+    tuples = list(zip(inda, indb))
+    index = pd.MultiIndex.from_tuples(tuples, names=["id", "run"])
+
+    # Assign indicies using MI object
+    x = pd.DataFrame(x.values, columns=x.columns, index=index)
+    x = x.sort_index(level='id')
+    x.drop(columns=['run'], inplace=True)
+    return x
+
+
+def mean_probas(x_test, y_test, models, compute_summary=False):
 
     # Initialise final results (mean_probas)
     n_rows = np.shape(y_test)[0]
@@ -354,14 +399,20 @@ def mean_probas(x_test, y_test, models):
     mean_probas = np.zeros(shape=(n_rows, n_cols))
 
     # Loop over all models, make predictions across K model, compute average.
+    summaries = []
     for i in range(len(models)):
-        net, y, y_hat, probas = xgb_predict(models[i], x_test, y_test)
-        mean_probas[:, i] = probas
+        _, _, _, probas = model_predict(models[i], x_test, y_test)
+        flattend_probas = probas[0].flatten()
+
+        if compute_summary:
+            df = pd.DataFrame(flattend_probas, columns=['positive'])
+            summaries.append(df)
+        mean_probas[:, i] = flattend_probas
 
     # Returns the mean predictions for all K models
     mean_probas = mean_probas.mean(axis=1)
     mean_probas = [(x, x) for x in mean_probas]
-    return mean_probas
+    return mean_probas, summaries
 
 
 def binary_acc(y_pred, y_test):
@@ -378,7 +429,6 @@ def binary_acc(y_pred, y_test):
 
 
 # Extract input variables from Argparse
-
 parser = argparse.ArgumentParser(description='bambi')
 parser.add_argument('-n', '--model_name', type=str, metavar='',
                     required=True, default='model_0', help='name of the model')
@@ -390,7 +440,7 @@ parser.add_argument('-un', '--use_noise', type=str, metavar='',
                     required=True, default=False, help='if True, injects noise to X')
 
 parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
-                    required=True, default=True, help='if True, drops homology feature')
+                    required=True, default=True, help='if True, drops "homology" feature')
 
 parser.add_argument('-sid', '--species_id', type=str, metavar='',
                     required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
@@ -404,8 +454,6 @@ parser.add_argument('-o', '--output_dir', type=str, metavar='',
 parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
                     required=True, default=3, help='number of randomised samplings')
 
-
-
 parser.add_argument('-bs', '--batch_size', type=int, metavar='',
                     required=True, default=50, help='number of batches to use')
 
@@ -418,6 +466,9 @@ parser.add_argument('-hs', '--hidden_size', type=int, metavar='',
 parser.add_argument('-lr', '--learning_rate', type=float, metavar='',
                     required=True, default=0.001, help='learning rate to apply to gradient update')
 
+parser.add_argument('-gr', '--generate_report', type=str, metavar='',
+                    required=True, default='False', help='generates ensemble report and saves each model in then ensemble (warning - very slow')
+
 # Parse agrs
 FORMAT = True
 args = parser.parse_args()
@@ -425,6 +476,7 @@ model_name = args.model_name
 use_cogs = True if args.cogs == 'True' else False
 use_noise = True if args.use_noise == 'True' else False
 drop_homology = True if args.drop_homology == 'True' else False
+generate_report = True if args.generate_report == 'True' else False
 species_id = args.species_id
 output_dir = os.path.join(args.output_dir, model_name)
 input_dir = os.path.join(args.input_dir)
@@ -516,33 +568,37 @@ for (species, species_name) in species_dict.items():
 
         # Grab classifier(s)
         print("Making inference")
-        classifiers = output['classifier'][-1]
-
+        classifiers = output['classifier']
         # Remove COG labels from the data
-        # x.drop(columns=['labels', 'cogs'], inplace=True)
+        # x.drop(columns=['labels', 'cogs'], inplace=True)              # <-- uncomment to run ony on train data, else runs on all data
+        x = a                                                           # <-- comment to run ony on train data, else runs on all data
 
-        x = a
         x_labels = x['labels']
         v_labels = v['labels']
 
         x.drop(columns=['labels'], inplace=True)
         v.drop(columns=['labels', 'cogs'], inplace=True)
 
-        # Get test probabilities
-        _, xy, xy_hat, x_probas = xgb_predict(
-            net=classifiers, x_test=x, y_test=x_labels)
+        # Get ensemble probabilities
+        ensemble_probas_x, summaries_x = mean_probas(
+            x_test=x, y_test=x_labels, models=classifiers, compute_summary=generate_report)
+        
+        ensemble_probas_v, summaries_v = mean_probas(
+            x_test=v, y_test=v_labels, models=classifiers, compute_summary=generate_report)
 
-        # Reformat test predictions
-        x_probas = [float(x) for x in x_probas[0]]
-        x_probas = [[x, x] for x in x_probas]
+        if generate_report:
+            # Get ensemble reports
+            c_x = combine_ensemble_reports(
+                summaries_x, protein_names=x.index.values)
+            c_v = combine_ensemble_reports(
+                summaries_v, protein_names=v.index.values)
 
-        # Get validation probabilities
-        _, vy, vy_hat, v_probas = xgb_predict(
-            net=classifiers, x_test=v, y_test=v_labels)
+            # Save ensemble reports
+            c_x.to_csv(os.path.join(output_dir, 'ensemble',
+                    'ensemble_report_x_{}.csv'.format(species)))
+            c_v.to_csv(os.path.join(output_dir, 'ensemble',
+                    'ensemble_report_v_{}.csv'.format(species)))
 
-        # Reformat validation predictions
-        v_probas = [float(x) for x in v_probas[0]]
-        v_probas = [[x, x] for x in v_probas]
 
         # Need to import data/spec_id.combinedv11.5.tsv for filtering on hold-out
         combined_score_file = '../data/{}.combined.v11.5.tsv'.format(species)
@@ -550,10 +606,10 @@ for (species, species_name) in species_dict.items():
             combined_score_file, header=None, sep='\t')
 
         # Save data compatible for Damaian's benchmark script (all data)
-        x_outs = save_outputs_benchmark(x=x, probas=x_probas, sid=species,
+        x_outs = save_outputs_benchmark(x=x, probas=ensemble_probas_x, sid=species,
                                         direc=output_dir, model_name=model_name + '.train_data')
 
-        v_outs = save_outputs_benchmark(x=v, probas=v_probas, sid=species,
+        v_outs = save_outputs_benchmark(x=v, probas=ensemble_probas_v, sid=species,
                                         direc=output_dir, model_name=model_name + '.hold_out_data')
 
         # Get the test intersection with benchmark plot - to make sure all ROC curves have equal points

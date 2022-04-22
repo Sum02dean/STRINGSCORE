@@ -412,7 +412,7 @@ def fit(clf, x_train, y_train, x_test, y_test):
     return clf
 
 
-def xgb_predict(clf, x_test, y_test):
+def model_predict(clf, x_test, y_test):
     """Predict on the unknown observations
 
     :param clf: XGBoost model
