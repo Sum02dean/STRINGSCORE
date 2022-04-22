@@ -117,4 +117,6 @@ The conda environemnt provided should contain all of these requirements. If not,
 
 
 IMPORTANT! For installation of R, Perl and Perl-Json install in the order shown. Always use the second option suggested by Pypi installation page.
+
+""" Combining plots Manually
 Note on combining plots **manually**: Make sure that file paths inside the master JSON are relative to the src directory.
