@@ -282,9 +282,7 @@ drop_homology = True if args.drop_homology == 'True' else False
 species_id = args.species_id
 output_dir = os.path.join(args.output_dir, model_name)
 input_dir = os.path.join(args.input_dir)
-use_foi = True if args.use_foi == 'True' else False
 n_samples = args.n_sampling_runs
-pre_process = True if args.pre_process == 'True' else False
 generate_report = True if args.generate_report == 'True' else False
 
 print('Running script with the following args:\n', args)
@@ -351,7 +349,7 @@ for (species, species_name) in species_dict.items():
 
         t1 = time.time()
         output = run_pipeline(x=x, cogs=use_cogs,
-                              params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_samples, scale=pre_process)
+                              params=params, weights=weights, noise=use_noise, run_cv=False, n_runs=n_samples, scale=False)
         t2 = time.time()
         print("Finished training in {}".format(t2 - t1))
 
