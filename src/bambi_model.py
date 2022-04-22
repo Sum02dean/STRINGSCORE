@@ -26,7 +26,6 @@ def get_formula(feature_names):
     f = 'y ~ ' + template
     return f
 
-
 def mean_probas(x, models, classifiers, compute_summary=False):
     """Computes the mean predictions across each of the trained ensemble predictors
 
@@ -67,7 +66,6 @@ def mean_probas(x, models, classifiers, compute_summary=False):
     ensemble_probas = mp / len(models)
     ensemble_probas = [(1 - x, x) for x in ensemble_probas]
     return ensemble_probas, summaries
-
 
 def combine_ensemble_reports(df_list, protein_names):
     """ Combines each dataset and lists each results under multi-index pandas DataFrame
@@ -263,22 +261,22 @@ parser.add_argument('-o', '--output_dir', type=str, metavar='',
                     required=True, default='../models', help='directory to save outputs to')
 
 parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
-                    required=True, default=3, help='number of randomised samplings')
+                    required=True, default=3, help='number of randomised samplings on COG splits')
 
 parser.add_argument('-nc', '--n_chains', type=int, metavar='',
-                    required=True, default=3000, help='number of chains')
+                    required=True, default=2, help='number of chains for monte-carlo sampling of parameter space used for tuning model parameters')
 
 parser.add_argument('-nd', '--n_draws', type=int, metavar='',
-                    required=True, default=3, help='number of draws per chain')
+                    required=True, default=1000, help='number of parameter draws per chain')
 
 parser.add_argument('-nt', '--n_tune', type=int, metavar='',
-                    required=True, default=1000, help='number of iterations to tune in NUTS')
+                    required=True, default=1000, help='number of observations to used for parameter tuning with NUTS')
 
 parser.add_argument('-fam', '--family', type=str, metavar='',
-                    required=True, default='bernoulli', help='prior family to use')
+                    required=True, default='bernoulli', help='prior probability family to use for predictive distribution')
 
 parser.add_argument('-er', '--generate_report', type=str, metavar='',
-                    required=True, default='False', help='generates ensemble report and saves each model in then ensemble (warning - very slow')
+                    required=True, default='False', help='generates ensemble report and saves each model in the ensemble (warning - very slow')
 
 # Parse agrs
 FORMAT = True

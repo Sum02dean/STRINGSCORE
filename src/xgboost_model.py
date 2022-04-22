@@ -247,13 +247,13 @@ parser.add_argument('-cw', '--class_weight', type=float, metavar='',
                     required=True, default=4, help='factor applied to positive predictions')
 
 parser.add_argument('-nr', '--neg_ratio', type=int, metavar='',
-                    required=True, default=4, help='factor increase in number of neg obs compared to pos obs')
+                    required=True, default=4, help='factor increase in number of negative obs compared to positive observations')
 
 parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
                     required=True, default=True, help='if True, drops "homology" feature')
 
 parser.add_argument('-sid', '--species_id', type=str, metavar='',
-                    required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
+                    required=True, default='511145 9606 4932', help='ID of species to include sepr=' '')
 
 parser.add_argument('-i', '--input_dir', type=str, metavar='',
                     required=True, default='pre_processed_data/scaled/', help='directory for pre-processed data')
@@ -262,10 +262,10 @@ parser.add_argument('-o', '--output_dir', type=str, metavar='',
                     required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
 parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
-                    required=True, default=3, help='number of randomised samplings')
+                    required=True, default=3, help='number of randomised samplings for COG splits')
 
 parser.add_argument('-gr', '--generate_report', type=str, metavar='',
-                    required=True, default='False', help='generates ensemble report and saves each model in then ensemble (warning - very slow')
+                    required=True, default='False', help='generates ensemble report and saves each model in the ensemble (warning - very slow')
 
 
 # To format data

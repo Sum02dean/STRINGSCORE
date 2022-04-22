@@ -94,7 +94,6 @@ class BinaryClassification(nn.Module):
         x = self.output_layer(x)
         return x
 
-
 def train_network(params, x_train, y_train):
     """ Train the neural networok
 
@@ -162,7 +161,6 @@ def train_network(params, x_train, y_train):
             f'Epoch {e+0:03}: | Loss: {epoch_loss/len(train_loader):.5f} | Acc: {epoch_acc/len(train_loader):.3f}')
     return net
 
-
 def model_predict(net, x_test, y_test):
     """Computes neural network predictions on test data
 
@@ -214,7 +212,6 @@ def model_predict(net, x_test, y_test):
     y_hat = [a.squeeze().tolist() for a in y_hat][0]
     y = [a.squeeze().tolist() for a in y][0]
     return net, y, y_hat, y_probas
-
 
 def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
     """Runs the entire modeling process, pre-processing has now been migrated to src/pre_process.py.
@@ -315,8 +312,8 @@ def run_pipeline(x, params, cogs=True, train_ratio=0.8, noise=False, n_runs=3):
         output_size = params['output_size']
 
         # Define key model args
-        net = BinaryClassification(input_dim=input_size, hidden_dim=[
-                                   hidden_size], output_dim=output_size)
+        net = BinaryClassification(input_dim=input_size, hidden_dim=
+                                   hidden_size, output_dim=output_size)
         criterion = torch.nn.BCEWithLogitsLoss()
         optimizer = optim.SGD(net.parameters(), lr=params['learning_rate'], momentum=0.9)
         params['net'] = net
@@ -390,7 +387,6 @@ def combine_ensemble_reports(df_list, protein_names):
     x.drop(columns=['run'], inplace=True)
     return x
 
-
 def mean_probas(x_test, y_test, models, compute_summary=False):
 
     # Initialise final results (mean_probas)
@@ -443,7 +439,7 @@ parser.add_argument('-dh', '--drop_homology', type=str, metavar='',
                     required=True, default=True, help='if True, drops "homology" feature')
 
 parser.add_argument('-sid', '--species_id', type=str, metavar='',
-                    required=True, default='511145 9606 4932', help='ids of species to include sepr=' '')
+                    required=True, default='511145 9606 4932', help='ID of species to include sepr=' '')
 
 parser.add_argument('-i', '--input_dir', type=str, metavar='',
                     required=True, default='../pre_processed_data/', help='directory to load data from')
@@ -452,22 +448,22 @@ parser.add_argument('-o', '--output_dir', type=str, metavar='',
                     required=True, default='benchmark/cog_predictions', help='directory to save outputs to')
 
 parser.add_argument('-ns', '--n_sampling_runs', type=int, metavar='',
-                    required=True, default=3, help='number of randomised samplings')
+                    required=True, default=3, help='number of randomised samplings on COG splits')
 
 parser.add_argument('-bs', '--batch_size', type=int, metavar='',
-                    required=True, default=50, help='number of batches to use')
+                    required=True, default=50, help='number of batches to use for model training')
 
 parser.add_argument('-e', '--epochs', type=int, metavar='',
-                    required=True, default=100, help='number of epochs to complete')
+                    required=True, default=100, help='number of epochs to complete for model training')
 
-parser.add_argument('-hs', '--hidden_size', type=int, metavar='',
-                    required=True, default=200, help='amount of neurons in hidden layer')
+parser.add_argument('-hs', '--hidden_size', type=str, metavar='',
+                    required=True, default='200', help='amount of neurons per hidden layer e.g. "200 100 10" generates 3 hidden layers with the corresponding elements representing the number of neurons per layer. ')
 
 parser.add_argument('-lr', '--learning_rate', type=float, metavar='',
-                    required=True, default=0.001, help='learning rate to apply to gradient update')
+                    required=True, default=0.001, help='learning rate to apply to gradient update rule in back propogation')
 
 parser.add_argument('-gr', '--generate_report', type=str, metavar='',
-                    required=True, default='False', help='generates ensemble report and saves each model in then ensemble (warning - very slow')
+                    required=True, default='False', help='generates ensemble report and saves each model in the ensemble (warning - very slow')
 
 # Parse agrs
 FORMAT = True
@@ -488,7 +484,7 @@ output_size = 1
 to_shuffle = True
 batch_size = args.batch_size
 epochs = args.epochs
-hidden_size = args.hidden_size
+hidden_size = [int(x) for x in args.hidden_size]
 learning_rate = args.learning_rate
 print('Running script with the following args:\n', args)
 print('\n')
